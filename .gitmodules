@@ -1,0 +1,3 @@
+[submodule "heapless-bencode"]
+	path = heapless-bencode
+	url = https://github.com/willemt/heapless-bencode.git
