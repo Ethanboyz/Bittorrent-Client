@@ -3,3 +3,9 @@
 
 # Misc
 *.txt
+
+# Object files
+*.o
+
+
+
