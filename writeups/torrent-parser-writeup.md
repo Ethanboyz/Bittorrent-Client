@@ -1,4 +1,5 @@
-# Torrent File Parser Design
+# Torrent File Parser + Getters
+`torrent_parser.h` `torrent_parser.c` `torrent_demo.c`
 author: jalal
 
 ## Goal
@@ -7,9 +8,8 @@ We use the `heapless-bencode` library to handle the bencoded data format.
 
 ## Usage
 - run make
-
-- in project root run 
-./torrent-demo ./pathToTorrentFile/example.torrent
+- in bin/ run the below
+./torrent-demo ./path_To_A_TorrentFile/example.torrent
 
 
 ## TODO and NOTES

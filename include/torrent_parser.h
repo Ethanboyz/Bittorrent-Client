@@ -6,47 +6,80 @@
  #ifndef TORRENT_PARSER_H
  #define TORRENT_PARSER_H
  
+ #include <time.h>
  #include "../heapless-bencode/bencode.h"
  
- /**
-  * Reads a torrent file into memory
-  * 
-  * @param filename Path to the torrent file
-  * @param buffer Pointer to the buffer where file content will be stored
-  * @param buffer_size Size of the allocated buffer
-  * @return int Size of the file read, or -1 on error
-  */
+/*
+* BELOW ARE THE RELEVANT DATA STRUCTURES OF A TORRENT FILE -- based on what i was able to understand from the wiki
+*/
+ 
+ typedef enum {
+     MODE_UNINITIALIZED,
+     MODE_SINGLE_FILE,
+     MODE_MULTI_FILE
+ } ModeType;
+ 
+ typedef struct {
+     char* path;
+     long length;
+     char* md5sum;
+ } TorrentFile;
+ 
+ typedef struct {
+     TorrentFile* files;
+     int files_count;
+     long total_length;
+ } MultiFileInfo;
+ 
+ typedef struct {
+     long length;
+     char* md5sum;
+ } SingleFileInfo;
+ 
+ typedef struct {
+     char* name;
+     long piece_length;
+     unsigned char* pieces;
+     int pieces_count;
+     int is_private;
+     ModeType mode_type;
+     
+     union {
+         SingleFileInfo single_file;
+         MultiFileInfo multi_file;
+     } mode;
+ } TorrentInfo;
+ 
+ typedef struct {
+     char* announce;
+     char** announce_list;
+     int announce_list_count;
+     time_t creation_date;
+     char* comment;
+     char* created_by;
+     char* encoding;
+     TorrentInfo info;
+ } Torrent;
+
+ 
+
+ // lifecycle of a Torrent object
+ Torrent* torrent_create(void);
+ void torrent_free(Torrent* torrent);
+ 
+ // the main function to parse a torrent file
+ int parse_torrent_file(const char *torrent_data, int len, Torrent** out_torrent);
+ 
+ // aux function that just reads and ensures a torrent file can be open/read
  int read_torrent_file(const char *filename, char *buffer, int buffer_size);
  
- /**
-  * Parses and prints torrent file information in a human-readable format
-  * 
-  * @param torrent_data Pointer to torrent file data in memory
-  * @param len Length of the torrent data
-  * @return int 0 on success, non-zero on failure
-  */
- int parse_torrent_file(const char *torrent_data, int len);
- 
- /**
-  * Prints the SHA1 hash pieces in a readable format
-  * 
-  * @param pieces Pointer to pieces string
-  * @param len Length of the pieces string
-  */
- void print_pieces(const char *pieces, int len);
- 
- /**
-  * Helper function to convert timestamp to readable date
-  * 
-  * @param timestamp UNIX timestamp
-  * @param buffer Buffer to store the date string
-  * @param buffer_size Size of the buffer
-  * @return char* Pointer to the buffer containing the formatted date
-  */
- char* format_timestamp(long int timestamp, char *buffer, int buffer_size);
-
-
- // TODO: create some datastructure to hold the torrent data or some kind of getters or something that can make it easy for us to get any required field we need when creating the communication component of a bittorent client
-
+ // Getters -- add more as needed???
+ const char* torrent_get_announce(const Torrent* torrent);
+ const char* torrent_get_comment(const Torrent* torrent);
+ long torrent_get_piece_length(const Torrent* torrent);
+ int torrent_get_piece_count(const Torrent* torrent);
+ time_t torrent_get_creation_date(const Torrent* torrent);
+ const char* torrent_get_created_by(const Torrent* torrent);
+ const char* torrent_get_encoding(const Torrent* torrent);
  
  #endif
