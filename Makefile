@@ -3,7 +3,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -I ./hash/includes -Iinclude -Iheapless-bencode -ggdb
-LDFLAGS = 
+LDFLAGS = -lcrypto
 
 DEBUG=-DDEBUG
 
@@ -22,7 +22,8 @@ TARGET = torrent-demo
 # Object files -- do for each relevant source file we write
 OBJS = $(BUILD_DIR)/torrent_parser.o \
        $(BUILD_DIR)/torrent_demo.o \
-       $(BUILD_DIR)/bencode.o
+       $(BUILD_DIR)/bencode.o \
+	   $(BUILD_DIR)/hash.o
 
 
 
@@ -34,7 +35,7 @@ all: $(BIN_DIR)/$(TARGET)
 
 # Link the target executable
 $(BIN_DIR)/$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "\n"
 	@echo "Build successful! Executable: $(BIN_DIR)/$(TARGET)"
 
@@ -51,6 +52,9 @@ $(BUILD_DIR)/torrent_demo.o: $(SRC_DIR)/torrent_demo.c
 
 
 $(BUILD_DIR)/bencode.o: $(BENCODE_DIR)/bencode.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/hash.o: $(SRC_DIR)/hash.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 

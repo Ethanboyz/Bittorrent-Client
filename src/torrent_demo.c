@@ -36,6 +36,12 @@
          printf("Total Size: %ld bytes\n", torrent->info.mode.multi_file.total_length);
          printf("File Count: %d\n", torrent->info.mode.multi_file.files_count);
      }
+
+    printf("  Info Hash: ");
+    for (int i = 0; i < 20; i++) {
+        printf("%02x", torrent->info_hash[i]);
+    }
+    printf("\n");
  }
  
  int main(int argc, char *argv[]) {

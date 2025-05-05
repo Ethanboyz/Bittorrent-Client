@@ -3,7 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include "../include/torrent_parser.h"
-
+#include "../include/hash.h"
 
 // helper function prototypes -- these are tried to kept modular and are what use the bencode library weve submoduled into this repo
 static void handle_announce(bencode_t *ben_item, Torrent *torrent);
@@ -14,11 +14,12 @@ static void handle_created_by(bencode_t *ben_item, Torrent *torrent);
 static void handle_encoding(bencode_t *ben_item, Torrent *torrent);
 static void handle_info_dict(bencode_t *ben_item, Torrent *torrent);
 
+static void calculate_info_hash(bencode_t *ben_item, Torrent *torrent);
+
 static void parse_files_list(bencode_t *ben, TorrentInfo *info);
 static char* join_path_components(bencode_t *path_list);
 static void print_pieces(const unsigned char *pieces, int count);
 static char* format_timestamp(time_t timestamp);
-
 
 // open, ensure file size is less than buffer size, and finally read file into buffer
 int read_torrent_file(const char *filename, char *buffer, int buffer_size) {
@@ -49,8 +50,6 @@ int read_torrent_file(const char *filename, char *buffer, int buffer_size) {
     
     return (int)bytes_read;
 }
-
-
 
 // Functions that will manage our data structures
 Torrent* torrent_create() {
@@ -152,8 +151,6 @@ int parse_torrent_file(const char *torrent_data, int len, Torrent** out_torrent)
 
     return 0;
 }
-
-
 
 // handlers that handle the bencoding parsing and validation -- these could be areas of concern if not implemented correctly :((( -- this proj is hard
 static void handle_announce(bencode_t *ben_item, Torrent *torrent) {
@@ -385,6 +382,8 @@ static void handle_info_dict(bencode_t *ben_item, Torrent *torrent) {
             printf("(unhandled info field)\n");
         }
     }
+
+    calculate_info_hash(ben_item, torrent);
 }
 
 static void parse_files_list(bencode_t *ben, TorrentInfo *info) {
@@ -539,9 +538,34 @@ static char* format_timestamp(time_t timestamp) {
     return buffer;
 }
 
+static void calculate_info_hash(bencode_t *ben_item, Torrent *torrent) {
+    const char *info;
+    int info_len;
+    bencode_t info_clone;
 
+    bencode_clone(ben_item, &info_clone);
 
+    if (bencode_dict_get_start_and_len(&info_clone, &info, &info_len) != 0) {
+        fprintf(stderr, "Error: cannot extract raw info dictionary for hash\n");
+        return;
+    }
 
+    struct sha1sum_ctx *ctx = sha1sum_create(NULL, 0);
+    if (!ctx) {
+		fprintf(stderr, "Error creating checksum\n");
+		return;
+	}
+
+    uint8_t checksum[20];
+    if (sha1sum_finish(ctx, (const uint8_t*)info, (size_t)info_len, checksum) != 0) {
+        fprintf(stderr, "Error creating checksum\n");
+        sha1sum_destroy(ctx);
+        return;
+    }
+
+    sha1sum_destroy(ctx);
+    memcpy(torrent->info_hash, checksum, 20);
+}
 
 // GETTERS
 const char* torrent_get_announce(const Torrent* torrent) {
@@ -566,6 +590,10 @@ const char* torrent_get_created_by(const Torrent* torrent) {
 
 const char* torrent_get_encoding(const Torrent* torrent) {
     return torrent ? torrent->encoding : NULL;
+}
+
+const unsigned char *torrent_get_info_hash(const Torrent* torrent) {
+    return torrent ? torrent->info_hash : NULL;
 }
 
 time_t torrent_get_creation_date(const Torrent* torrent) {
