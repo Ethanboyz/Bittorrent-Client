@@ -4,11 +4,11 @@
 
 #define MAX_OUTSTANDING_REQUESTS 10                 // Max number of requests "in-flight" (arbitrary number 10, adjust as needed)
 
-struct Peer {
+typedef struct {
     int sock_fd;                                    // Socket file descriptor
     uint32_t address;                               // 32-bit IPv4
     uint16_t port;                                  // Port 0-65535
-    unsigned char id[20];                           // Hashed peer ID
+    unsigned char id[20];                           // Unique peer ID (NOT hashed)
     
     // Manages if we can upload/download
     bool choking;                                   // Choking status, 1 meaning you are choking this peer (you won't upload to it)
@@ -29,4 +29,4 @@ struct Peer {
     // Buffer for incoming messages per peer to make message parsing easier
     unsigned char *incoming_buffer;                 // Buffer usage will allow processing incoming messages however they come
     size_t incoming_buffer_len;
-};
+} Peer;
