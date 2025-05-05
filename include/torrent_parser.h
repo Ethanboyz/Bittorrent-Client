@@ -7,7 +7,7 @@
 #define TORRENT_PARSER_H
 
 #include <time.h>
-#include "../heapless-bencode/bencode.h"
+#include "bencode.h"
 
 /*
  * BELOW ARE THE RELEVANT DATA STRUCTURES OF A TORRENT FILE -- based on what i was able to understand from the wiki

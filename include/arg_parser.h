@@ -5,6 +5,8 @@
 // Holds parsed run arguments for the client
 struct run_arguments {
     int debug_mode;             // If debug mode should be enabled (enables extra output)
+    int port;
+    char *filename;             // Torrent file
 };
 
 /**
@@ -24,4 +26,4 @@ error_t arg_parser(int key, char *arg, struct argp_state *state);
  * @param argv Values of the CLI arguments
  * @return the resolved CLI values
  */
-struct run_arguments parseopt(int argc, char *argv[]);
+struct run_arguments arg_parseopt(int argc, char *argv[]);

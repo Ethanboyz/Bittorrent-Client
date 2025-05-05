@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "../include/torrent_parser.h"
-#include "../include/hash.h"
+
+#include "torrent_parser.h"
+#include "hash.h"
 
 // helper function prototypes -- these are tried to kept modular and are what use the bencode library weve submoduled into this repo
 static void handle_announce(bencode_t *ben_item, Torrent *torrent);
