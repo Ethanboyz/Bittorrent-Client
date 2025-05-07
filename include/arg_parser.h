@@ -4,7 +4,7 @@
 
 // Holds parsed run arguments for the client
 struct run_arguments {
-    int debug_mode;             // If debug mode should be enabled (enables extra output)
+    int debug_mode;             // If debug mode should be enabled (writes output to log file)
     int port;
     char *filename;             // Torrent file
 };

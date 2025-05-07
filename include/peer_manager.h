@@ -1,14 +1,24 @@
-#include <stdint.h>
-#include <stddef.h>
+#ifndef PEER_MANAGER_H
+#define PEER_MANAGER_H
+
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <argp.h>
+#include <sys/select.h>
+#include <poll.h>
+#include <netinet/tcp.h>
 #include <stdbool.h>
 
-#define MAX_OUTSTANDING_REQUESTS 10                 // Max number of requests "in-flight" (arbitrary number 10, adjust as needed)
+#include "torrent_parser.h"
+
+#define MAX_OUTSTANDING_REQUESTS 10                 // Max number of requests "in-flight" per peer (arbitrary number 10, adjust as needed)
+#define MAX_PEERS 65535                             // Max number of peers per torrent
 
 typedef struct {
     int sock_fd;                                    // Socket file descriptor
     uint32_t address;                               // 32-bit IPv4
     uint16_t port;                                  // Port 0-65535
-    unsigned char id[20];                           // Unique peer ID (NOT hashed)
+    unsigned char id[20];                           // Unique peer ID
     
     // Manages if we can upload/download
     bool choking;                                   // Choking status, 1 meaning you are choking this peer (you won't upload to it)
@@ -30,3 +40,23 @@ typedef struct {
     unsigned char *incoming_buffer;                 // Buffer usage will allow processing incoming messages however they come
     size_t incoming_buffer_len;
 } Peer;
+
+/**
+ * @brief Add and connect to a new peer and immediately send it a handshake
+ * @return The connected peer's socket file descriptor, or -1 if failed to connect
+ */
+int add_peer(const struct sockaddr_in *addr, socklen_t addr_len);
+
+/**
+ * @brief Disconnect and remove peer
+ * @return 0 if successful, -1 otherwise
+ */
+int remove_peer(Peer *peer);
+
+/**
+ * @brief Send a keepalive message to peer
+ * @return 0 if successful, -1 otherwise
+ */
+int send_keepalive_message(const Peer *peer);
+
+#endif

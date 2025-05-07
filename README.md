@@ -15,6 +15,7 @@ Example executable
 
 ## Logs (may or may not be maintained...)
 
+- 5/06: wrote some function skeletons for peer_manager and added some structure to btclient. Btclient will now listen for incoming connections/messages.
 - 5/05: set up an entry point to the client and updated arg parser to take in port and filename arguments 
 - 5/05: calculated info hash in torrent_parser to be used in tracker request parameters, and set up a rough header file for the tracker
 communication to get list of peers (still needs to be implemented)

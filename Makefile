@@ -23,6 +23,7 @@ OBJS = $(BUILD_DIR)/torrent_parser.o \
        $(BUILD_DIR)/bencode.o \
 	   $(BUILD_DIR)/hash.o \
 	   $(BUILD_DIR)/arg_parser.o \
+	   $(BUILD_DIR)/peer_manager.o \
 	   $(BUILD_DIR)/btclient.o
 
 
@@ -50,6 +51,9 @@ $(BUILD_DIR)/hash.o: $(SRC_DIR)/hash.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/arg_parser.o: $(SRC_DIR)/arg_parser.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/peer_manager.o: $(SRC_DIR)/peer_manager.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/btclient.o: $(SRC_DIR)/btclient.c
