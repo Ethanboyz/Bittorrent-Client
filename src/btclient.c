@@ -27,9 +27,9 @@ struct run_arguments get_args(void) {return args;}
 
 // Getters
 struct pollfd *get_fds(void) {return fds;}      // Return "authentic" fds array
-int get_num_fds(void) {return num_fds;}         // Return number of fds in fds array
+int *get_num_fds(void) {return &num_fds;}       // Return number of fds in fds array
 Peer *get_peers(void) {return peers;}           // Return "authentic" peers array
-int get_num_peers(void) {return num_peers;}     // Return number of peers
+int *get_num_peers(void) {return &num_peers;}   // Return number of peers
 
 // Start client listening for incoming connections
 int client_listen(int port) {

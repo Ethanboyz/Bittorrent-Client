@@ -48,7 +48,7 @@ typedef struct {
 int add_peer(const struct sockaddr_in *addr, socklen_t addr_len);
 
 /**
- * @brief Disconnect and remove peer
+ * @brief Disconnect and remove a specified peer. Compacts the fds and peers arrays by filling the resulting empty hole when the peer is removed.
  * @return 0 if successful, -1 otherwise
  */
 int remove_peer(Peer *peer);
