@@ -3,7 +3,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -I ./hash/includes -Iinclude -Iheapless-bencode -ggdb
-LDFLAGS = -lcrypto
+LDFLAGS = -lcrypto -lssl
 
 DEBUG=-DDEBUG
 
@@ -24,7 +24,8 @@ OBJS = $(BUILD_DIR)/torrent_parser.o \
 	   $(BUILD_DIR)/hash.o \
 	   $(BUILD_DIR)/arg_parser.o \
 	   $(BUILD_DIR)/peer_manager.o \
-	   $(BUILD_DIR)/btclient.o
+	   $(BUILD_DIR)/tracker.o \
+	   $(BUILD_DIR)/btclient.o 
 
 
 # Ensure directories exist before building
@@ -54,6 +55,9 @@ $(BUILD_DIR)/arg_parser.o: $(SRC_DIR)/arg_parser.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/peer_manager.o: $(SRC_DIR)/peer_manager.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/tracker.o: $(SRC_DIR)/tracker.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/btclient.o: $(SRC_DIR)/btclient.c
