@@ -23,7 +23,7 @@ static int send_handshake(Peer *peer) {
 }
 
 // Add and connect to a new peer
-// TODO: implement this!
+// TODO: create new peer and set it to peer[num_peers]!
 int add_peer(const struct sockaddr_in *addr, socklen_t addr_len) {
     int new_sock;
     struct sockaddr_in client_addr;
@@ -51,13 +51,14 @@ int add_peer(const struct sockaddr_in *addr, socklen_t addr_len) {
 
         num_peers++;
         
-        fprintf(stderr, "New connection from %s on socket %d\n", inet_ntoa(client_addr.sin_addr), new_sock);
+        if (get_args().debug_mode) fprintf(stderr, "New connection from %s on socket %d\n", inet_ntoa(client_addr.sin_addr), new_sock);
+        return new_sock;
     }
     return 0;
 }
 
 // Disconnect and remove a specified peer. Compacts the fds and peers arrays by filling the resulting empty hole when the peer is removed.
-// TODO: implement this!
+// TODO: confirm there is nothing to do before disconnecting the peer, and free any fields in peers[(fds_index) - 1] if needed!
 int remove_peer(Peer *peer) {
     struct pollfd *fds = get_fds();
     Peer *peers = get_peers();

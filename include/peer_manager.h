@@ -43,7 +43,7 @@ typedef struct {
 
 /**
  * @brief Add and connect to a new peer and immediately send it a handshake
- * @return The connected peer's socket file descriptor, or -1 if failed to connect
+ * @return The connected peer's socket file descriptor, 0 if there was no new peer, or -1 if failed to connect
  */
 int add_peer(const struct sockaddr_in *addr, socklen_t addr_len);
 

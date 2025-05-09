@@ -50,7 +50,7 @@ int client_listen(int port) {
 
     int toggle = 1;
     setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &toggle, sizeof(toggle)); // Prevent slowdowns in testing by allowing quick reuse of IP and port
-    setsockopt(listen_sock, IPPROTO_TCP, TCP_NODELAY, &toggle, sizeof(toggle)); // Prevent slowdowns in sending messages by disabling Nagle's Algorithm
+    setsockopt(listen_sock, IPPROTO_TCP, TCP_NODELAY, &toggle, sizeof(toggle)); // Prevent slowdowns in sending (especially handshake) by disabling Nagle's Algorithm
 
     // Have the server listen in from anywhere on the specified port
     server_addr.sin_family = AF_INET;
