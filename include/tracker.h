@@ -15,7 +15,7 @@ typedef struct {
 
 // send HTTP or HTTPS GET request
 TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char *peer_id, 
-    int port, int uploaded, int downloaded, int left);
+    int port, long uploaded, long downloaded, long left);
 
 // free list of peers
 void free_tracker_response(TrackerResponse *response);
