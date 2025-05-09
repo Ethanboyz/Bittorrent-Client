@@ -7,5 +7,4 @@
 # Object files
 *.o
 
-
-bin/
+btclient
