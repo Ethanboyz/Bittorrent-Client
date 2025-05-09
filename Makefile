@@ -25,6 +25,7 @@ OBJS = $(BUILD_DIR)/torrent_parser.o \
 	   $(BUILD_DIR)/arg_parser.o \
 	   $(BUILD_DIR)/peer_manager.o \
 	   $(BUILD_DIR)/tracker.o \
+	   $(BUILD_DIR)/piece_manager.o \
 	   $(BUILD_DIR)/btclient.o 
 
 
@@ -58,6 +59,9 @@ $(BUILD_DIR)/peer_manager.o: $(SRC_DIR)/peer_manager.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/tracker.o: $(SRC_DIR)/tracker.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/piece_manager.o: $(SRC_DIR)/piece_manager.c 
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/btclient.o: $(SRC_DIR)/btclient.c
