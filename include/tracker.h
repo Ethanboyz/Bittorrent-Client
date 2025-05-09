@@ -1,29 +1,21 @@
 #include "peer_manager.h"
 #include "bencode.h"
 
-// file for tracker communication
-// goal here is to get the peer list so our client can participate in the torrent
+// tracker communication
 
-// NOTE: optional parameters have been left out for now
-
-typedef struct {
-    unsigned char info_hash[20];
-    unsigned char peer_id[20];
-    int port;
-    int uploaded;
-    int downloaded;
-    int left;
-    int compact;
-    char event[10];
-} TrackerRequest;
+// NOTE: optional parameters have been LEFT OUT for now
 
 typedef struct {
     int interval;
     int complete;
     int incomplete;
+    int num_peers;
     Peer *peers;
 } TrackerResponse;
 
-// format URL
-// send HTTP GET request 
-    // response is a bencoded dict
+// send HTTP or HTTPS GET request
+TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char *peer_id, 
+    int port, int uploaded, int downloaded, int left);
+
+// free list of peers
+void free_tracker_response(TrackerResponse *response);

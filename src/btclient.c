@@ -13,6 +13,7 @@
 #include "arg_parser.h"
 #include "torrent_parser.h"
 #include "peer_manager.h"
+#include "tracker.h"
 
 // Keep track of connected peers (and their socket fds)
 static struct pollfd fds[MAX_PEERS + 1];
@@ -81,6 +82,37 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
     }
+
+    /* everything commented below was just to verify peers were being returned
+    from my tracker, you can uncomment and run with a file to verify yourself 
+    if you want or just delete it all idc
+    there's also a bit of structure here, for example parsing torrent file
+    then getting response with list of peers from that file - Priya */
+
+    // const char *filename = args.filename;
+    // char *buffer = malloc(1024 * 1024 * 1024);
+    // int bytes_read = read_torrent_file(filename, buffer, 1024 * 1024 * 1024);
+    // printf("Successfully read %d bytes from %s\n\n", bytes_read, filename);
+
+    // Torrent *torrent = NULL;
+    // parse_torrent_file(buffer, bytes_read, &torrent);
+
+    // TrackerResponse response = http_get(torrent->announce, torrent->info_hash, 
+    //     (unsigned char *) "-PC0001-A1B2C3D4E5F6", args.port, 0, 0, torrent->info.mode.single_file.length);
+
+    // int num = response.num_peers;
+    // printf("the number of peers is %d\n", num);
+    // if (num > 5) {
+    //     num = 5;
+    // }
+    // for (int i = 0; i < num; i++) {
+    //     printf("port is %d and addr is %" PRIu32 "\n", response.peers[i].port, response.peers[i].address);
+    // }
+
+    // free_tracker_response(&response);
+    // torrent_free(torrent);
+    // free(buffer);
+
 
     // TODO: parse torrent file, do other stuff, idk
 
