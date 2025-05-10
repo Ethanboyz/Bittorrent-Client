@@ -97,8 +97,15 @@ int main(int argc, char *argv[]) {
     // Torrent *torrent = NULL;
     // parse_torrent_file(buffer, bytes_read, &torrent);
 
+    // long len;
+    // if (torrent->info.mode_type == MODE_SINGLE_FILE) {
+    //     len = torrent->info.mode.single_file.length;
+    // } else {
+    //     len = torrent->info.mode.multi_file.total_length;
+    // }
+
     // TrackerResponse response = http_get(torrent->announce, torrent->info_hash, 
-    //     (unsigned char *) "-PC0001-A1B2C3D4E5F6", args.port, 0, 0, torrent->info.mode.single_file.length);
+    //     (unsigned char *) "-PC0001-A1B2C3D4E5F6", args.port, 0, 0, len);
 
     // int num = response.num_peers;
     // printf("the number of peers is %d\n", num);

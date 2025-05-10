@@ -85,13 +85,13 @@ void parse_announce(char *announce, struct url_parts *parts) {
     }
 }
 
-// TODO: fix handling response when it's chunked (HTTPS)
-static size_t handle_chunked(const char *src, size_t src_len, char **out) {
-    const char *p = src;
-    const char *end = src + src_len;
+// handle extra data/spaces when response is chunked 
+size_t handle_chunked(const char *data, size_t data_len, char **dechunked) {
+    const char *p = data;
+    const char *end = data + data_len;
     size_t total = 0;
-    *out = malloc(src_len);
-    char *dst = *out;
+    *dechunked = malloc(data_len);
+    char *dst = *dechunked;
 
     while (p < end) {
         char *chunk;
@@ -126,6 +126,10 @@ static size_t handle_chunked(const char *src, size_t src_len, char **out) {
 // parse bencoded tracker response
 TrackerResponse parse_response(char *buf, size_t buf_len) {
     TrackerResponse response = {0};
+    // set values to -1 if following data isn't given in response
+    // (complete and incomplete values can be received from scrape request later)
+    response.complete = -1;      
+    response.incomplete = -1;
 
     const char *data;
     for (size_t i = 0; i + 4 <= buf_len; i++) {
@@ -135,6 +139,17 @@ TrackerResponse parse_response(char *buf, size_t buf_len) {
         }
     }
     size_t data_len = buf_len - (data - buf);
+
+    // handle case where response is chunked
+    char *dechunked = NULL;
+    size_t dechunked_len = 0;
+    if (strstr(buf, "Transfer-Encoding: chunked")) {
+        dechunked_len = handle_chunked(data, data_len, &dechunked);
+        if (dechunked_len > 0) {
+            data = dechunked;
+            data_len = dechunked_len;
+        }
+    }
 
     bencode_t ben, ben_item;
     bencode_init(&ben, data, (int) data_len);
@@ -157,6 +172,7 @@ TrackerResponse parse_response(char *buf, size_t buf_len) {
             long incomplete;
             bencode_int_value(&ben_item, &incomplete);
             response.incomplete = incomplete;
+        // binary model peers
         } else if (key_len == 5 && strncmp(key, "peers", 5) == 0 && bencode_is_string(&ben_item)) {
             const char *peers;
             int len;
@@ -173,15 +189,57 @@ TrackerResponse parse_response(char *buf, size_t buf_len) {
                 memcpy(&port, pos + 4, sizeof(port));
                 response.peers[i].port = ntohs(port);
             }
+        // dictionary model peers
+        } else if (key_len == 5 && strncmp(key, "peers", 5) == 0 && bencode_is_list(&ben_item)) {
+            bencode_t peers = ben_item;
+            int num_peers = 0;
+            while (bencode_list_has_next(&peers)) {
+                bencode_t peer;
+                bencode_list_get_next(&peers, &peer);
+                num_peers++;
+            }
+            response.num_peers = num_peers;
+            response.peers = calloc(num_peers, sizeof(Peer));
+
+            peers = ben_item;
+            int i = 0;
+            while (bencode_list_has_next(&peers)) {
+                bencode_t peer;
+                bencode_list_get_next(&peers, &peer);
+                while (bencode_dict_has_next(&peer)) {
+                    bencode_t field;
+                    const char *field_key;
+                    int field_key_len;
+                    bencode_dict_get_next(&peer, &field, &field_key, &field_key_len);
+                    // ip address
+                    if (field_key_len == 2 && strncmp(field_key, "ip", 2) == 0 && bencode_is_string(&field)) {
+                        const char *ip_string;
+                        int ip_len;
+                        bencode_string_value(&field, &ip_string, &ip_len);
+                        char addr_buf[16] = {0};
+                        memcpy(addr_buf, ip_string, ip_len);
+                        struct in_addr addr;
+                        inet_aton(addr_buf, &addr);
+                        response.peers[i].address = ntohl(addr.s_addr);
+                    }
+                    // port
+                    if (field_key_len == 4 && strncmp(field_key, "port", 4) == 0 && bencode_is_int(&field)) {
+                        long port;
+                        bencode_int_value(&field, &port);
+                        response.peers[i].port = (uint16_t) port;
+                    }
+                }
+                i++;
+            }
         }
     }
-
+    free(dechunked);
     return response;
 }
 
 // send HTTP or HTTPS GET request
 TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char *peer_id, 
-        int port, int uploaded, int downloaded, int left) {
+        int port, long uploaded, long downloaded, long left) {
     char *encoded_hash = encode_bin_data(info_hash, 20);
     char *encoded_id = encode_bin_data(peer_id, 20);
     
@@ -191,7 +249,7 @@ TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char
     // set parameters for request
     char params[1024];
     snprintf(params, sizeof(params), 
-        "%s?info_hash=%s&peer_id=%s&port=%d&uploaded=%d&downloaded=%d&left=%d&compact=1",
+        "%s?info_hash=%s&peer_id=%s&port=%d&uploaded=%ld&downloaded=%ld&left=%ld&compact=1",
         parts.path, encoded_hash, encoded_id, port, uploaded, downloaded, left);
 
     free(encoded_hash);

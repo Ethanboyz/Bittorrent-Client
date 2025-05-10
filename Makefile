@@ -3,7 +3,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -I ./hash/includes -Iinclude -Iheapless-bencode -ggdb
-LDFLAGS = -lcrypto -lssl
+LDFLAGS = -lcrypto -lssl -lm
 
 DEBUG=-DDEBUG
 
