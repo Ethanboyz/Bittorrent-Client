@@ -15,6 +15,7 @@ Example executable
 
 ## Logs (may or may not be maintained...)
 
+- 5/10: completed a lot of the receiving messages from peers logic, still needs code to actually process the received messages (if anyone wants to help with that). I'll keep working into the night to finish the rest of everything.
 - 5/10: as per ethans suggestion, I tried to add functionality to measure download/upload rates BUT since full SEND/RECV CODE hasn't been implemented in peer manager, I don't want to mess with anything and break the current thought process since measuring rates involves measuring bytes sent (Jalal)
 - 5/10: wrote some writeups of how to begin to integrate everything together -- tracker needs some udp and scrape implementation -- remaining functionality currently dependent upon peer manager -- the goat ethans got it (Jalal)
 - 5/09: implemented a bunch of peer_manager functions. Still needs work with sending and receiving request and piece messages, which I'll finish tomorrow. Peer manager

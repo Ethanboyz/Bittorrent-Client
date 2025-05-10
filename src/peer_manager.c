@@ -195,7 +195,7 @@ static void parse_peer_incoming_buffer(Peer *peer) {
         if (length_prefix == 19) {                      // Message was a handshake
             char protocol[20];
             strncpy(protocol, peer->incoming_buffer + 1, 20);
-            if (strncmp(protocol, PROTOCOL, 19)) {      // Confirm it's actually a handshake
+            if (!strncmp(protocol, PROTOCOL, 19)) {      // Confirm it's actually a handshake
                 // TODO: get info_hash and peer_id
                 // TODO: if info_hash is unverifiable, drop connection (?), else, send bitfield
             }
