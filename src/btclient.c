@@ -123,9 +123,13 @@ int main(int argc, char *argv[]) {
         if (poll_result == -1) {
             if (get_args().debug_mode) fprintf(stderr, "Poll failed\n");
             break;
-        } else {        // The poll revealed a new message or connection
-            // TODO: peer_manager.c functions will add new peers, if applicable
-            // TODO: receive messages from peers, handle accordingly
+        }
+        peer_manager_add_peer(&torrent, NULL, 0);       // Adds new connections only if they are available
+        for (int i = 1; i < num_fds; i++) {
+            if (fds[i].revents & POLLIN) {
+                
+                // TODO: receive messages from peers, handle accordingly
+            }
         }
     }
 }

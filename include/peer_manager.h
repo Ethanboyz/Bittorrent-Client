@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <netinet/tcp.h>
 #include <stdbool.h>
+#include <time.h>
 
 #include "torrent_parser.h"
 
@@ -15,37 +16,93 @@
 #define MAX_PEERS 65535                             // Max number of peers per torrent
 
 typedef struct {
-    int sock_fd;                                    // Socket file descriptor
-    uint32_t address;                               // 32-bit IPv4
-    uint16_t port;                                  // Port 0-65535
-    unsigned char id[20];                           // Unique peer ID
-    
-    // Manages if we can upload/download
-    bool choking;                                   // Choking status, 1 meaning you are choking this peer (you won't upload to it)
-    bool interested;                                // This peer is interested if we have pieces it doesn't have
-
     // Announced by the peer to indicate which pieces it has
-    uint8_t *bitfield;                              // Bitmask of pieces this peer has (1 bit -> 1 piece)
-    size_t bitfield_length;                         // Number of bitfield elements
+    unsigned char *bitfield;                        // Bitmask of pieces this peer has (1 bit -> 1 piece)
+    size_t bitfield_bits;                           // Number of bitfield elements (bits)
 
-    // Keep track of outstanding requests to this peer
+    // Buffer for incoming messages per peer to make message parsing easier
+    unsigned char *incoming_buffer;                 // Buffer usage will allow processing incoming messages however they come
+    size_t incoming_buffer_len;
+
+    // The torrent that this peer is associated with
+    Torrent torrent;
+
+    // Connectivity info
+    int sock_fd;                                    // Socket file descriptor
+    uint32_t address;                               // 32-bit IPv4 (big endian/network byte order)
+    uint16_t port;                                  // Port 0-65535 (big endian/network byte order)
+    unsigned char id[20];                           // Unique peer ID
+
+    // Download/upload rate fields
+    ssize_t bytes_sent;                             // Bytes sent since the last rate measure
+    ssize_t bytes_recv;                             // Bytes received since the last rate measure
+    //struct timespec last_rate_time;                 // Last time a rate measure was taken
+    double upload_rate;                             // Last measured upload rate
+    double download_rate;                           // Last measured download rate
+
+    // Keep track of our outstanding requests to this peer
     int num_outstanding_requests;                   // Number of outstanding requests (messages in-flight)
     struct request {                                // In-flight request and its fields (kept in queue implemented as a circular array)
         uint32_t index;
         uint32_t begin;
         uint32_t length;
     } outstanding_requests[MAX_OUTSTANDING_REQUESTS];
-
-    // Buffer for incoming messages per peer to make message parsing easier
-    unsigned char *incoming_buffer;                 // Buffer usage will allow processing incoming messages however they come
-    size_t incoming_buffer_len;
+    
+    // Manages if we can upload/download
+    bool choking;                                   // True meaning you are choking this peer (you won't upload to it)
+    bool is_interesting;                            // True meaning we are interested in this peer (it has pieces we need)
+    bool choked;                                    // True meaning this peer is choking us (don't bother sending requests to it)
+    bool is_interested;                             // True meaning this peer is interested in us (we have pieces it doesn't have)
 } Peer;
 
-/**
- * @brief Add and connect to a new peer and immediately send it a handshake
- * @return The connected peer's socket file descriptor, 0 if there was no new peer, or -1 if failed to connect
+/** 
+ * @brief Send interested message to peer
+ * @return 0 if successful, -1 otherwise
  */
-int add_peer(const struct sockaddr_in *addr, socklen_t addr_len);
+int peer_manager_send_interested(Peer *peer);
+
+/** 
+ * @brief Send not interested message to peer
+ * @return 0 if successful, -1 otherwise
+ */
+int peer_manager_send_not_interested(Peer *peer);
+
+/** 
+ * @brief Choke and send choke message to peer
+ * @return 0 if successful, -1 otherwise
+ */
+int peer_manager_choke_peer(Peer *peer);
+
+/** 
+ * @brief Unchoke and send unchoke message to peer
+ * @return 0 if successful, -1 otherwise
+ */
+int peer_manager_unchoke_peer(Peer *peer);
+
+/**
+ * @brief Send bitfield to peer 
+ * @return 0 if successful, -1 otherwise
+ */
+int send_bitfield(Peer *peer);
+
+/**
+ * @brief Queue piece request message to peer. This sends the request and queues it as an outstanding request and will be stored for reference until a corresponding piece is received.
+ * @return 0 if successful, -1 if message is not sent (there are too many outstanding requests for this peer).
+ */
+int peer_manager_queue_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length);
+
+/**
+ * @brief Send a keepalive message to peer
+ * @return 0 if successful, -1 otherwise
+ */ 
+int peer_manager_send_keepalive_message(const Peer *peer);
+
+/**
+ * @brief Add and connect to a new peer specified by the given address and length, then send it a handshake.
+ * If addr is NULL, will attempt to add any peers via incoming connections instead, then send it a handshake.
+ * @return The connected peer's socket file descriptor, 0 if there was no new peer (if addr is NULL), or -1 if failed to connect
+ */
+int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, socklen_t addr_len);
 
 /**
  * @brief Disconnect and remove a specified peer. Compacts the fds and peers arrays by filling the resulting empty hole when the peer is removed.

@@ -15,6 +15,8 @@ Example executable
 
 ## Logs (may or may not be maintained...)
 
+- 5/09: implemented a bunch of peer_manager functions. Still needs work with sending and receiving request and piece messages, which I'll finish tomorrow. Peer manager
+also needs functionality to measure download/upload rates. If anyone wants to implement that logic (looking at you Jalal), that'll be most welcome. If not, I'm happy to do it. (Ethan)
 - 5/09: finished up tracker portion for HTTP trackers. still having trouble with
 HTTPS trackers, but working through it. tracker code returns a TrackerResponse
 which will hold a list of Peer structs from peer_manager (Priya)
