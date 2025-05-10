@@ -13,8 +13,7 @@ We use the `heapless-bencode` library to handle the bencoded data format.
 
 
 ## TODO and NOTES
-- test various .torrent files as different ones have different structures ie single file mode vs multiple vs optional fields
-- the parser itself i guess is useless except for our own understanding --> the main thing to prioritize and test is a datastructure/getters that let us easily obtain info/fields we need
+**no need to run demo anymore, tested and it works** -- nothing else as of 5/10/2025 - jalal
 
 
 
