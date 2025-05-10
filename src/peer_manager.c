@@ -83,22 +83,140 @@ static int send_handshake(Peer *peer) {
     return sent;
 }
 
+// Dequeue an outstanding request for peer (when a response is confirmed for that request), and write the response data
+// TODO: write the actual data to wherever it needs to go!
+static void dequeue_and_process_outstanding(Peer *peer, uint32_t piece_index, uint32_t piece_begin, const uint8_t *block, size_t length) {
+    int found_index = -1;
+    for (int i = 0; i < peer->num_outstanding_requests; i++) {              // Search for the outstanding_request index with the matching request
+        int index = (peer->requests_head + i) % MAX_OUTSTANDING_REQUESTS;   // Remember that we're working with a circular array here
+        struct request element = peer->outstanding_requests[index];
+        if (element.index == piece_index && element.begin == piece_begin) {    // CONFIRM
+            found_index = index;
+            break;
+        }
+    }
+    if (found_index == -1) {
+        if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Dequeue outstanding request failed. No record of request found\n");
+        return;
+    }
+
+    // TODO: write block with length "length" at piece_index, piece_begin in file
+
+    // Dequeue the request element, shift everything to fill the empty hole
+    int curr_index = found_index;
+    while (curr_index != peer->requests_head) {
+        int prev_index = (curr_index - 1 + MAX_OUTSTANDING_REQUESTS) % MAX_OUTSTANDING_REQUESTS;
+        peer->outstanding_requests[curr_index] = peer->outstanding_requests[prev_index];
+        curr_index = prev_index;
+    }
+    peer->requests_head = (peer->requests_head + 1) % MAX_OUTSTANDING_REQUESTS;
+    peer->num_outstanding_requests--;
+}
+
 // Handle a single message (with length prefix attached)
-// TODO: implement this!
+// TODO: implement msg_id cases!
 static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *payload, size_t payload_length) {
-    
+    switch (msg_id) {
+        case CHOKE: {
+            peer->choked = true;
+            break;
+        }
+        case UNCHOKE: {
+            peer->choked = false;
+            break;
+        }
+        case INTERESTED: {
+            // TODO: implement this!
+            break;
+        }
+        case NOT_INTERESTED: {
+            // TODO: implement this!
+            break;
+        }
+        case HAVE: {
+            // Consider simply disregarding completely
+            break;
+        }
+        case BITFIELD: {
+            memcpy(peer->bitfield, payload, payload_length);
+            // TODO: set bitfield bits!
+            break;
+        }
+        case REQUEST: {
+            // TODO: implement this!
+            break;
+        }
+        case PIECE: {
+            // Break down the piece message, then process it
+            if (payload_length >= 0) {
+                uint32_t index = 0;
+                memcpy(&index, payload + 0, 4);
+                index = ntohl(index);
+                uint32_t begin = 0;
+                memcpy(&begin, payload + 4, 4);
+                begin = ntohl(begin);
+                const unsigned char *block = payload + 8;
+                size_t block_length = payload_length - 8;   // 8 is the length of index and begin combined
+                dequeue_and_process_outstanding(peer, index, begin, block, block_length);
+            }
+            break;
+        }
+        case CANCEL: {
+            // Ignore this for now, this is for End Game
+            break;
+        }
+        case PORT: {
+            // Ignore this for now, this is for DHT
+            break;
+        }
+    }
 }
 
-// Parse as many messages from incoming_buffer as possible
-// TODO: implement this!
+// Parse as many full messages from incoming_buffer as possible
+// TODO: needs to handle handshake messages!
 static void parse_peer_incoming_buffer(Peer *peer) {
+    size_t offset = 0;                                          // For keeping track of what was processed
+    size_t available_bytes = peer->incoming_buffer_offset;      // How many bytes are left
+    while (available_bytes >= 4) {
+        uint32_t length_prefix;
+        memcpy(&length_prefix, peer->incoming_buffer + offset, 4);
+        length_prefix = ntohl(length_prefix);
 
-}
+        if (length_prefix == 0) {           // Message was a keepalive, continue
+            offset += 4;
+            available_bytes -= 4;
+            continue;
+        }
+        if (available_bytes < 4 + length_prefix) {
+            // Ran out of data, cannot process anymore messages
+            break;
+        }
 
-// Dequeue an outstanding request for peer (when a response is confirmed for that request)
-// TODO: implement this!
-static void dequeue_outstanding(Peer *peer, uint32_t piece_index, uint32_t block_offset, const uint8_t *data, size_t length) {
-    
+        if (length_prefix == 19) {                      // Message was a handshake
+            char protocol[20];
+            strncpy(protocol, peer->incoming_buffer + 1, 20);
+            if (strncmp(protocol, PROTOCOL, 19)) {      // Confirm it's actually a handshake
+                // TODO: get info_hash and peer_id
+                // TODO: if info_hash is unverifiable, drop connection (?), else, send bitfield
+            }
+        }
+
+        // Full normal message available, process it
+        uint8_t msg_id = peer->incoming_buffer[offset + 4];
+        unsigned char *payload = peer->incoming_buffer + offset + 5;
+        size_t payload_length = length_prefix - 1;
+        handle_peer_message(peer, msg_id, payload, payload_length);
+
+        size_t full_message_length = 4 + length_prefix;
+        offset += full_message_length;
+        available_bytes -= full_message_length;
+    }
+
+    // Once done processing all possible messages, slide potential leftovers to the beginning of incoming_buffer
+    if (offset > 0) {
+        memmove(peer->incoming_buffer, peer->incoming_buffer + offset, available_bytes);    // The discovery of this function is revolutionary 0_0
+        peer->incoming_buffer_offset = available_bytes;                                     // Next reads will be written after the leftover bytes
+    }
 }
 
 // Send interested message to peer
@@ -184,9 +302,8 @@ int send_bitfield(Peer *peer) {
     return 0;
 }
 
-// Queue piece request message to peer. This sends the request and queues it as an outstanding request and will be stored for reference until a corresponding piece is received.
-// TODO: enqueue request message into outstanding_request
-int peer_manager_queue_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length) {
+// Sends the request and queues it as an outstanding request and will be stored for reference until a corresponding piece is received.
+int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length) {
     if (peer->num_outstanding_requests >= MAX_OUTSTANDING_REQUESTS) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Too many outstanding requests for this peer, try again later\n");
         return -1;
@@ -220,7 +337,12 @@ int peer_manager_queue_request(Peer *peer, uint32_t request_index, uint32_t requ
         return -1;
     }
 
-    // TODO: enqueue the request message in the outstanding_requests circular array
+    // Enqueue the request message in the outstanding_requests circular array
+    peer->outstanding_requests[peer->requests_tail].index = request_index;
+    peer->outstanding_requests[peer->requests_tail].begin = request_begin;
+    peer->outstanding_requests[peer->requests_tail].length = request_length;
+    peer->requests_tail = (peer->requests_tail + 1) % MAX_OUTSTANDING_REQUESTS;
+    peer->num_outstanding_requests++;
 
     return 0;
 }
@@ -238,10 +360,33 @@ int peer_manager_send_keepalive_message(Peer *peer) {
     return 0;
 }
 
-// Receive incoming and store in buffer to be processed
-// TODO: implement this!
+// Receive incoming, store in buffer, and process
 int peer_manager_receive_messages(Peer *peer) {
-    return 0;
+    int received = recv(
+        peer->sock_fd,
+        peer->incoming_buffer + peer->incoming_buffer_offset,
+        MAX_INCOMING_BYTES - peer->incoming_buffer_offset,
+        MSG_DONTWAIT
+    );
+    if (received == 0) {
+        if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: receive_messages failed, peer has disconnected\n");
+        return 0;
+    }
+    if (received == -1) {
+        if (get_args().debug_mode) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                fprintf(stderr, "[PEER_MANAGER]: receive_messages failed, nothing to receive (yet)\n");
+            } else {
+                fprintf(stderr, "[PEER_MANAGER]: receive_messages failed, something went wrong while trying to receive a message\n");
+            }
+        }
+        return -1;
+    }
+
+    peer->incoming_buffer_offset += received;
+    peer->bytes_recv += received;
+    parse_peer_incoming_buffer(peer);
+    return received;
 }
 
 // Add and connect to a new peer, sending it a handshake
@@ -284,8 +429,8 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     // Initializing all the fields for the peers array
     peers[*num_peers].bitfield = NULL;      // We can expect this to be initialized later
     peers[*num_peers].bitfield_bits = 0;
-    peers[*num_peers].incoming_buffer = calloc(MAX_OUTSTANDING_REQUESTS * (DEFAULT_BLOCK_LENGTH + 17), 1);
-    peers[*num_peers].incoming_buffer_len = MAX_OUTSTANDING_REQUESTS * (DEFAULT_BLOCK_LENGTH + 17);
+    // incoming_buffer doesn't need assignment
+    peers[*num_peers].incoming_buffer_offset = 0;
     peers[*num_peers].torrent = torrent;
     peers[*num_peers].sock_fd = new_sock;
     if (addr == NULL) {
@@ -302,8 +447,8 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     double upload_rate = 0;
     double download_rate = 0;
     peers[*num_peers].num_outstanding_requests = 0;
-    peers[*num_peers].tail = 0;
-    peers[*num_peers].head = 0;
+    peers[*num_peers].requests_tail = 0;
+    peers[*num_peers].requests_head = 0;
     // outstanding_requests doesn't need assignment
     peers[*num_peers].choking = true;
     peers[*num_peers].is_interesting = false;
@@ -363,7 +508,6 @@ int peer_manager_remove_peer(Peer *peer) {
     if (peers[peer_index].bitfield != NULL) {
         free(peers[(fds_index) - 1].bitfield);
     }
-    free(peers[peer_index].incoming_buffer);
     peers[peer_index] = peers[*num_peers];
 
     if (get_args().debug_mode) {

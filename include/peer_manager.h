@@ -11,9 +11,13 @@
 #include <time.h>
 
 #include "torrent_parser.h"
+#include "piece_manager.h"
 
 #define MAX_OUTSTANDING_REQUESTS 10                 // Max number of requests "in-flight" per peer (arbitrary number 10, adjust as needed)
 #define MAX_PEERS 65535                             // Max number of peers per torrent
+
+// Max number of incoming bytes based on the size of piece messages
+#define MAX_INCOMING_BYTES (MAX_OUTSTANDING_REQUESTS * (DEFAULT_BLOCK_LENGTH + 17))
 
 typedef struct {
     // Announced by the peer to indicate which pieces it has
@@ -21,8 +25,8 @@ typedef struct {
     size_t bitfield_bits;                           // Number of bitfield elements (bits)
 
     // Buffer for incoming messages per peer to make message parsing easier
-    unsigned char *incoming_buffer;                 // Buffer usage will allow processing incoming messages however they come
-    size_t incoming_buffer_len;
+    unsigned char incoming_buffer[MAX_INCOMING_BYTES];
+    size_t incoming_buffer_offset;                  // Bytes in use in incoming_buffer
 
     // The torrent that this peer is associated with
     Torrent torrent;
@@ -42,7 +46,7 @@ typedef struct {
 
     // Keep track of our outstanding requests to this peer
     int num_outstanding_requests;                   // Number of outstanding requests (messages in-flight)
-    int tail, head;                                 // Tail = empty index to be enqueued. Head = filled index to be dequeued
+    int requests_tail, requests_head;               // Tail = empty index to be enqueued. Head = filled index to be dequeued
     struct request {                                // In-flight request and its fields (kept in queue implemented as a circular array)
         uint32_t index;
         uint32_t begin;
@@ -87,16 +91,22 @@ int peer_manager_unchoke_peer(Peer *peer);
 int send_bitfield(Peer *peer);
 
 /**
- * @brief Queue piece request message to peer. This sends the request and queues it as an outstanding request and will be stored for reference until a corresponding piece is received.
+ * @brief Sends the request and queues it as an outstanding request and will be stored for reference until a corresponding piece is received.
  * @return 0 if successful, -1 if message is not sent (there are too many outstanding requests for this peer).
  */
-int peer_manager_queue_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length);
+int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length);
 
 /**
  * @brief Send a keepalive message to peer
  * @return 0 if successful, -1 otherwise
  */ 
 int peer_manager_send_keepalive_message(Peer *peer);
+
+/**
+ * @brief Receive incoming, store in buffer, and process
+ * @return Number of bytes received, 0 if the peer has disconnected (recommend to call peer_manager_remove_peer and decrement index if in a loop),
+ * or -1 upon error (likely due to no available messages) */
+int peer_manager_receive_messages(Peer *peer);
 
 /**
  * @brief Add and connect to a new peer specified by the given address and length, then send it a handshake.
@@ -109,7 +119,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
  * @brief Disconnect and remove a specified peer. Compacts the fds and peers arrays by filling the resulting empty hole when the peer is removed.
  * @return 0 if successful, -1 otherwise
  */
-int remove_peer(Peer *peer);
+int peer_manager_remove_peer(Peer *peer);
 
 /**
  * @brief Send a keepalive message to peer

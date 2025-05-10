@@ -136,8 +136,13 @@ int main(int argc, char *argv[]) {
         peer_manager_add_peer(*torrent, NULL, 0);       // Adds new connections only if they are available
         for (int i = 1; i < num_fds; i++) {
             if (fds[i].revents & POLLIN) {
-                
                 // TODO: receive messages from peers, handle accordingly
+                Peer peer = get_peers()[i - 1];
+                int rec = peer_manager_receive_messages(&peer);
+                if (rec == 0) {
+                    peer_manager_remove_peer(&peer);
+                    i--;
+                }
             }
         }
     }
