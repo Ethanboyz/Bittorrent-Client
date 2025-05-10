@@ -89,37 +89,39 @@ int main(int argc, char *argv[]) {
     there's also a bit of structure here, for example parsing torrent file
     then getting response with list of peers from that file - Priya */
 
-    // const char *filename = args.filename;
-    // char *buffer = malloc(1024 * 1024 * 1024);
-    // int bytes_read = read_torrent_file(filename, buffer, 1024 * 1024 * 1024);
-    // printf("Successfully read %d bytes from %s\n\n", bytes_read, filename);
+    // I uncommented it so you can see the output and make doesnt error out and actually creates a executable -- Jalal 5/10/2025
+//----------------------------------------------------------------------------------------------------------------
+    const char *filename = args.filename;
+    char *buffer = malloc(1024 * 1024 * 1024);
+    int bytes_read = read_torrent_file(filename, buffer, 1024 * 1024 * 1024);
+    printf("Successfully read %d bytes from %s\n\n", bytes_read, filename);
 
-    // Torrent *torrent = NULL;
-    // parse_torrent_file(buffer, bytes_read, &torrent);
+    Torrent *torrent = NULL;
+    parse_torrent_file(buffer, bytes_read, &torrent);
 
-    // long len;
-    // if (torrent->info.mode_type == MODE_SINGLE_FILE) {
-    //     len = torrent->info.mode.single_file.length;
-    // } else {
-    //     len = torrent->info.mode.multi_file.total_length;
-    // }
+    long len;
+    if (torrent->info.mode_type == MODE_SINGLE_FILE) {
+        len = torrent->info.mode.single_file.length;
+    } else {
+        len = torrent->info.mode.multi_file.total_length;
+    }
 
-    // TrackerResponse response = http_get(torrent->announce, torrent->info_hash, 
-    //     (unsigned char *) "-PC0001-A1B2C3D4E5F6", args.port, 0, 0, len);
+    TrackerResponse response = http_get(torrent->announce, torrent->info_hash, 
+        (unsigned char *) "-PC0001-A1B2C3D4E5F6", args.port, 0, 0, len);
 
-    // int num = response.num_peers;
-    // printf("the number of peers is %d\n", num);
-    // if (num > 5) {
-    //     num = 5;
-    // }
-    // for (int i = 0; i < num; i++) {
-    //     printf("port is %d and addr is %" PRIu32 "\n", response.peers[i].port, response.peers[i].address);
-    // }
+    int num = response.num_peers;
+    printf("the number of peers is %d\n", num);
+    if (num > 5) {
+        num = 5;
+    }
+    for (int i = 0; i < num; i++) {
+        printf("port is %d and addr is %" PRIu32 "\n", response.peers[i].port, response.peers[i].address);
+    }
 
-    // free_tracker_response(&response);
-    // torrent_free(torrent);
-    // free(buffer);
-
+    free_tracker_response(&response);
+    torrent_free(torrent);
+    free(buffer);
+//----------------------------------------------------------------------------------------------------------------
 
     // TODO: parse torrent file, do other stuff, idk
 
@@ -131,7 +133,7 @@ int main(int argc, char *argv[]) {
             if (get_args().debug_mode) fprintf(stderr, "Poll failed\n");
             break;
         }
-        peer_manager_add_peer(&torrent, NULL, 0);       // Adds new connections only if they are available
+        peer_manager_add_peer(*torrent, NULL, 0);       // Adds new connections only if they are available
         for (int i = 1; i < num_fds; i++) {
             if (fds[i].revents & POLLIN) {
                 
