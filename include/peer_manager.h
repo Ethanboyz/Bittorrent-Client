@@ -36,12 +36,13 @@ typedef struct {
     // Download/upload rate fields
     ssize_t bytes_sent;                             // Bytes sent since the last rate measure
     ssize_t bytes_recv;                             // Bytes received since the last rate measure
-    //struct timespec last_rate_time;                 // Last time a rate measure was taken
+    struct timeval last_rate_time;                 // Last time a rate measure was taken
     double upload_rate;                             // Last measured upload rate
     double download_rate;                           // Last measured download rate
 
     // Keep track of our outstanding requests to this peer
     int num_outstanding_requests;                   // Number of outstanding requests (messages in-flight)
+    int tail, head;                                 // Tail = empty index to be enqueued. Head = filled index to be dequeued
     struct request {                                // In-flight request and its fields (kept in queue implemented as a circular array)
         uint32_t index;
         uint32_t begin;
@@ -95,7 +96,7 @@ int peer_manager_queue_request(Peer *peer, uint32_t request_index, uint32_t requ
  * @brief Send a keepalive message to peer
  * @return 0 if successful, -1 otherwise
  */ 
-int peer_manager_send_keepalive_message(const Peer *peer);
+int peer_manager_send_keepalive_message(Peer *peer);
 
 /**
  * @brief Add and connect to a new peer specified by the given address and length, then send it a handshake.
@@ -114,6 +115,6 @@ int remove_peer(Peer *peer);
  * @brief Send a keepalive message to peer
  * @return 0 if successful, -1 otherwise
  */
-int send_keepalive_message(const Peer *peer);
+int send_keepalive_message(Peer *peer);
 
 #endif

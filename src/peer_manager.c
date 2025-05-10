@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <argp.h>
-#include <time.h>
+#include <sys/time.h>
 #include <sys/select.h>
 #include <poll.h>
 #include <netinet/tcp.h>
@@ -32,11 +32,11 @@ enum MSG_ID {
 static const char *PROTOCOL = "BitTorrent protocol";
 
 // Send a message via socket fd, returning the number of bytes sent (helper function)
-static int send_message(int fd, const unsigned char *message, size_t message_len) {
+static int send_message(Peer *peer, const unsigned char *message, size_t message_len) {
     size_t sent = 0;
     // Avoid potential partial writes to send buffer by cumulatively sending the message multiple times if needed
     while (sent < message_len) {
-        int n = send(fd, message + sent, message_len - sent, 0);
+        int n = send(peer->sock_fd, message + sent, message_len - sent, 0);
         if (n == -1) {
             if (errno == EINTR) {
                 if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Message did not send due to interruption, trying again...\n");
@@ -45,12 +45,13 @@ static int send_message(int fd, const unsigned char *message, size_t message_len
             return -1;
         }
         sent += n;
+        peer->bytes_sent += n;
     }
     return sent;
 }
 
 // Send handshake message to peer with info_hash attached, returning the number of bytes sent
-static int send_handshake(const Peer *peer) {
+static int send_handshake(Peer *peer) {
     int handshake_length = 68;
     unsigned char message[handshake_length];
     int offset = 0;                         // Cumulatively construct the message
@@ -76,7 +77,7 @@ static int send_handshake(const Peer *peer) {
         return -1;
     }
 
-    int sent = send_message(peer->sock_fd, message, handshake_length);
+    int sent = send_message(peer, message, handshake_length);
     if (sent == -1 && get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Failed to send handshake\n");
 
     return sent;
@@ -107,7 +108,7 @@ int peer_manager_send_interested(Peer *peer) {
     memcpy(message, &length_prefix, 4);
     message[4] = INTERESTED;                // id byte
 
-    if (send_message(peer->sock_fd, message, 5) == -1) {
+    if (send_message(peer, message, 5) == -1) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Failed to interest\n");
         return -1;
     }
@@ -123,7 +124,7 @@ int peer_manager_send_not_interested(Peer *peer) {
     memcpy(message, &length_prefix, 4);
     message[4] = NOT_INTERESTED;            // id byte
 
-    if (send_message(peer->sock_fd, message, 5) == -1) {
+    if (send_message(peer, message, 5) == -1) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Failed to not interest\n");
         return -1;
     }
@@ -139,7 +140,7 @@ int peer_manager_choke_peer(Peer *peer) {
     memcpy(message, &length_prefix, 4);
     message[4] = CHOKE;                     // id byte
 
-    if (send_message(peer->sock_fd, message, 5) == -1) {
+    if (send_message(peer, message, 5) == -1) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Failed to choke\n");
         return -1;
     }
@@ -155,7 +156,7 @@ int peer_manager_unchoke_peer(Peer *peer) {
     memcpy(message, &length_prefix, 4);
     message[4] = UNCHOKE;                   // id byte
 
-    if (send_message(peer->sock_fd, message, 5) == -1) {
+    if (send_message(peer, message, 5) == -1) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Failed to choke\n");
         return -1;
     }
@@ -175,7 +176,7 @@ int send_bitfield(Peer *peer) {
 
     memcpy(message + 5, peer->bitfield, bitfield_bytes);
 
-    if (send_message(peer->sock_fd, message, 5 + peer->bitfield_bits) == -1) {
+    if (send_message(peer, message, 5 + peer->bitfield_bits) == -1) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Failed to send bitfield\n");
         return -1;
     }
@@ -214,7 +215,7 @@ int peer_manager_queue_request(Peer *peer, uint32_t request_index, uint32_t requ
         return -1;
     }
 
-    if (send_message(peer->sock_fd, message, 17) == -1) {
+    if (send_message(peer, message, 17) == -1) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Something went wrong while sending the request message\n");
         return -1;
     }
@@ -225,13 +226,12 @@ int peer_manager_queue_request(Peer *peer, uint32_t request_index, uint32_t requ
 }
 
 // Send a keepalive message to peer
-// TODO: implement this!
-int peer_manager_send_keepalive_message(const Peer *peer) {
+int peer_manager_send_keepalive_message(Peer *peer) {
     uint8_t message[4];
     uint32_t length_prefix = htonl(0);      // 4 length bytes
     memcpy(message, &length_prefix, 4);
 
-    if (send_message(peer->sock_fd, message, 4) == -1) {
+    if (send_message(peer, message, 4) == -1) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Failed to send keepalive message\n");
         return -1;
     }
@@ -245,7 +245,6 @@ int peer_manager_receive_messages(Peer *peer) {
 }
 
 // Add and connect to a new peer, sending it a handshake
-// TODO: fix timespec initialization
 int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, socklen_t addr_len) {
     int new_sock;
     struct sockaddr_in new_addr;
@@ -299,11 +298,13 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     // don't assign id until handshake is received
     ssize_t bytes_sent = 0;
     ssize_t bytes_recv = 0;
-    //struct timespec last_rate_time = {0, 0};    // TODO: fix
+    gettimeofday(&peers[*num_peers].last_rate_time, NULL);
     double upload_rate = 0;
     double download_rate = 0;
     peers[*num_peers].num_outstanding_requests = 0;
-    // outstanding_requests array doesn't need assignment
+    peers[*num_peers].tail = 0;
+    peers[*num_peers].head = 0;
+    // outstanding_requests doesn't need assignment
     peers[*num_peers].choking = true;
     peers[*num_peers].is_interesting = false;
     peers[*num_peers].choked = true;
