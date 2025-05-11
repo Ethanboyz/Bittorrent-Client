@@ -1,396 +1,449 @@
-/*
- * Main function here so entry point into rest of our code
- * Executable runs this
- * Reads command line arguments needed for parsing torrent and connecting to tracker
- * TODO: need to decide how to connect this to the rest of our pieces
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <poll.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
+#include <time.h>
 
-#include "arg_parser.h"
+#include "btclient.h"
 #include "torrent_parser.h"
 #include "peer_manager.h"
 #include "tracker.h"
-#include "piece_manager.h" // MOD: Include piece manager
+#include "piece_manager.h"
 
-// Keep track of connected peers (and their socket fds)
-// fds[0] is always the listen socket
+
+#ifndef MAX_PEERS
+#define MAX_PEERS 50
+#endif
+#ifndef MAX_OUTSTANDING_REQUESTS
+#define MAX_OUTSTANDING_REQUESTS 5
+#endif
+
+static Peer peers[MAX_PEERS]; // MOD: Using Peer typedef
 static struct pollfd fds[MAX_PEERS + 1];
-static Peer peers[MAX_PEERS];
 static int num_fds;
 static int num_peers;
 
 static struct run_arguments args;
-static Torrent *current_torrent = NULL; // MOD: Store the parsed torrent globally
+static Torrent *current_torrent = NULL;
+static unsigned char client_peer_id[20];
 
-// Return run arguments
 struct run_arguments get_args(void) { return args; }
 
-// Getters
-struct pollfd *get_fds(void) { return fds; } // Return "authentic" fds array
-int *get_num_fds(void)
-{
+struct pollfd *get_fds(void) { return fds; }
+int *get_num_fds(void) {
     return &num_fds;
 }
-// Return number of fds in fds array
 
-Peer *
-get_peers(void)
-{
-    return peers;
+struct Peer *get_peers(void) { // btclient.h declares struct Peer *
+    return (struct Peer *)peers; // peers is Peer[], cast to struct Peer *
 }
-// Return "authentic" peers array
-int *get_num_peers(void)
-{
+int *get_num_peers(void) {
     return &num_peers;
-} // Return number of peers
+}
 
-// Start client listening for incoming connections
-int client_listen(int port)
-{
+int client_listen(int port) {
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
-    // Initialize
 
     int listen_sock = socket(AF_INET, SOCK_STREAM, 0);
-    // Create new TCP server socket
-    if (listen_sock == -1)
-    {
-        if (get_args().debug_mode)
-            fprintf(stderr, "Socket creation failed: %s\n", strerror(errno));
+    if (listen_sock == -1) {
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[BTCLIENT_LISTEN]: Socket creation failed: %s\n", strerror(errno)); fflush(stderr);
+        }
         exit(1);
     }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_LISTEN]: Listener socket created: %d\n", listen_sock); fflush(stderr); }
 
-    // MOD: Set listen socket to non-blocking
     int flags = fcntl(listen_sock, F_GETFL, 0);
-    if (fcntl(listen_sock, F_SETFL, flags | O_NONBLOCK) == -1)
-    {
-        if (get_args().debug_mode)
-            fprintf(stderr, "Failed to set listen socket to non-blocking: %s\n", strerror(errno));
+    if (flags == -1) {
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[BTCLIENT_LISTEN]: Failed to get flags for listen socket: %s\n", strerror(errno)); fflush(stderr);
+        }
         close(listen_sock);
         exit(1);
     }
+    if (fcntl(listen_sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[BTCLIENT_LISTEN]: Failed to set listen socket to non-blocking: %s\n", strerror(errno)); fflush(stderr);
+        }
+        close(listen_sock);
+        exit(1);
+    }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_LISTEN]: Listener socket set to non-blocking.\n"); fflush(stderr); }
 
-    // Initialize fds array
     fds[0].fd = listen_sock;
-    fds[0].events = POLLIN; // Poll for incoming connections
+    fds[0].events = POLLIN;
     num_fds = 1;
     num_peers = 0;
 
     int toggle = 1;
-    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &toggle, sizeof(toggle)); // Prevent slowdowns in testing by allowing quick reuse of IP and port
-    setsockopt(listen_sock, IPPROTO_TCP, TCP_NODELAY, &toggle, sizeof(toggle)); // Prevent slowdowns in sending (especially handshake) by disabling Nagle's Algorithm
+    if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &toggle, sizeof(toggle)) == -1) {
+        if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_LISTEN]: setsockopt SO_REUSEADDR failed: %s\n", strerror(errno)); fflush(stderr); }
+    } else {
+        if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_LISTEN]: setsockopt SO_REUSEADDR set.\n"); fflush(stderr); }
+    }
+    if (setsockopt(listen_sock, IPPROTO_TCP, TCP_NODELAY, &toggle, sizeof(toggle)) == -1) {
+        if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_LISTEN]: setsockopt TCP_NODELAY failed: %s\n", strerror(errno)); fflush(stderr); }
+    } else {
+         if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_LISTEN]: setsockopt TCP_NODELAY set.\n"); fflush(stderr); }
+    }
 
-    // Have the server listen in from anywhere on the specified port
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(port);
 
-    // Binding the server socket and setting it to listen
-    if (bind(listen_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
-    {
-        if (get_args().debug_mode)
-            fprintf(stderr, "Bind failed: %s\n", strerror(errno));
-        close(listen_sock); // MOD: Close socket on failure
+    if (bind(listen_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[BTCLIENT_LISTEN]: Bind failed for port %d: %s\n", port, strerror(errno)); fflush(stderr);
+        }
+        close(listen_sock);
         return -1;
     }
-    if (listen(listen_sock, 32) == -1)
-    {
-        if (get_args().debug_mode)
-            fprintf(stderr, "Listen failed: %s\n", strerror(errno));
-        close(listen_sock); // MOD: Close socket on failure
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_LISTEN]: Socket bound to port %d.\n", port); fflush(stderr); }
+
+    if (listen(listen_sock, MAX_PEERS) == -1) {
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[BTCLIENT_LISTEN]: Listen failed: %s\n", strerror(errno)); fflush(stderr);
+        }
+        close(listen_sock);
         return -1;
     }
 
-    if (get_args().debug_mode)
-        fprintf(stderr, "Listening on port %d...\n", port);
+    if (get_args().debug_mode) {
+        fprintf(stderr, "[BTCLIENT_LISTEN]: Listening on port %d...\n", port); fflush(stderr);
+    }
     return 0;
 }
 
-int main(int argc, char *argv[])
-{
-    args = arg_parseopt(argc, argv); // MOD: Assign to static args
 
-    // Enable debug mode by directing stderr to log file
-    if (args.debug_mode)
-    {
-        if (freopen("debug.log", "w", stderr) == NULL)
-        {
-            fprintf(stderr, "Failed to enable debug mode\n");
-            exit(1);
+int main(int argc, char *argv[]) {
+    args = arg_parseopt(argc, argv);
+
+    if (args.debug_mode) {
+        if (freopen("debug.log", "w", stderr) == NULL) {
+            // If freopen fails, stderr is still console. Further fprintf(stderr,...) will go to console.
+            fprintf(stdout, "CRITICAL: Failed to redirect stderr to debug.log. Debug messages will go to console if possible.\n");
+            // We might not want to exit here, but continue with stderr as console for debugging.
         }
-        fprintf(stderr, "Debug mode enabled. Log file: debug.log\n"); // MOD: Log that debug is on
+        fprintf(stderr, "[BTCLIENT_MAIN]: Debug mode enabled. Log output target: debug.log (or console if redirection failed).\n");
+        fflush(stderr); 
     }
 
-    // MOD: --- Torrent Parsing and Tracker Request ---
     const char *filename = args.filename;
-    if (!filename)
-    { // MOD: Ensure filename was provided
-        fprintf(stderr, "Error: No torrent file specified. Use -f <filename>\n");
+    if (!filename) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Error: No torrent file specified. Use -f <filename>\n"); fflush(stderr);
         exit(1);
     }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Torrent file to parse: %s\n", filename); fflush(stderr); }
 
-    char *buffer = malloc(1024 * 1024 * 1024); // MOD: Still large buffer
-    if (!buffer)
-    { // MOD: Check malloc
-        fprintf(stderr, "Error: Failed to allocate buffer for torrent file.\n");
+    char *buffer = malloc(1024 * 1024 * 1024);
+    if (!buffer) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to allocate buffer for torrent file.\n"); fflush(stderr);
         exit(1);
     }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Allocated buffer for torrent file reading.\n"); fflush(stderr); }
 
     int bytes_read = read_torrent_file(filename, buffer, 1024 * 1024 * 1024);
-    if (bytes_read <= 0)
-    { // MOD: Check for read errors
-        fprintf(stderr, "Error: Could not read torrent file '%s'.\n", filename);
+    if (bytes_read <= 0) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Could not read torrent file '%s'. Bytes read: %d\n", filename, bytes_read); fflush(stderr);
         free(buffer);
         exit(1);
     }
-    printf("Successfully read %d bytes from %s\n\n", bytes_read, filename);
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Successfully read %d bytes from %s\n", bytes_read, filename); fflush(stderr); }
 
-    Torrent *torrent = NULL;
-    if (parse_torrent_file(buffer, bytes_read, &torrent) != 0 || !torrent)
-    { // MOD: Check parse result
-        fprintf(stderr, "Error: Could not parse torrent file '%s'.\n", filename);
+    // current_torrent is Torrent*
+    if (parse_torrent_file(buffer, bytes_read, &current_torrent) != 0 || !current_torrent) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Could not parse torrent file '%s'.\n", filename); fflush(stderr);
         free(buffer);
         exit(1);
     }
-    current_torrent = torrent; // MOD: Store the parsed torrent globally
-
-    free(buffer); // MOD: Free buffer after parsing
-
-    long total_len; // MOD: Use long
-    if (torrent->info.mode_type == MODE_SINGLE_FILE)
-    {
-        total_len = torrent->info.mode.single_file.length;
-    }
-    else
-    {
-        total_len = torrent->info.mode.multi_file.total_length;
+    // torrent_parser.c's printf output to stdout happens inside parse_torrent_file
+    if (get_args().debug_mode) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Torrent file parsed successfully (by torrent_parser module).\n");
+        fflush(stderr);
+        fprintf(stderr, "[BTCLIENT_MAIN]: Announce URL from parsed torrent: %s\n", current_torrent->announce);
+        fflush(stderr);
     }
 
-    // TODO: Generate a unique peer ID for this client
-    unsigned char client_peer_id[20] = "-PC0001-ABCDEFG12345"; // Placeholder
 
-    TrackerResponse response = http_get(torrent->announce, torrent->info_hash, client_peer_id, args.port, 0, 0, total_len); // MOD: Pass total_len as 'left' initially
+    free(buffer);
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Freed torrent file read buffer.\n"); fflush(stderr); }
 
-    int num_peers_from_tracker = response.num_peers;                          // MOD: Store count
-    printf("Tracker response contained %d peers.\n", num_peers_from_tracker); // MOD: Use stored count
+    long total_len;
+    if (current_torrent->info.mode_type == MODE_SINGLE_FILE) {
+        total_len = current_torrent->info.mode.single_file.length;
+    } else {
+        total_len = current_torrent->info.mode.multi_file.total_length;
+    }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Total torrent length: %ld bytes.\n", total_len); fflush(stderr); }
 
-    // MOD: ************************** Piece Manager Initialization *******************
-    const char *output_filename = torrent->info.name ? torrent->info.name : "downloaded_file"; // Use torrent name or default
-    if (piece_manager_init(current_torrent, output_filename) != 0)
-    { // MOD: Init piece manager with pointer
-        fprintf(stderr, "Error: Failed to initialize piece manager.\n");
+    srand(time(NULL));
+    snprintf((char*)client_peer_id, sizeof(client_peer_id), "-PC0123-%011ld", rand() % 100000000000L);
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Generated client peer ID: %s\n", client_peer_id); fflush(stderr); }
+
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Attempting tracker GET request to: %s\n", current_torrent->announce); fflush(stderr); }
+    TrackerResponse response = http_get(current_torrent->announce, current_torrent->info_hash, client_peer_id, args.port, 0, 0, total_len);
+    // MOD: Check if http_get indicated an error. For now, assume it exits on error internally.
+    // http_get would return an error code???
+    if (get_args().debug_mode) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Tracker GET request completed.\n"); fflush(stderr);
+        fprintf(stderr, "[BTCLIENT_MAIN]: Tracker Response -> Interval: %d, Complete: %d, Incomplete: %d, Num Peers: %d\n",
+                response.interval, response.complete, response.incomplete, response.num_peers);
+        fflush(stderr);
+    }
+
+    int num_peers_from_tracker = response.num_peers;
+    if (get_args().debug_mode && num_peers_from_tracker == 0) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Tracker returned 0 peers. Will only listen for incoming connections.\n");
+        fflush(stderr);
+    }
+
+    const char *output_filename = current_torrent->info.name ? current_torrent->info.name : "downloaded_file";
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Initializing piece manager for output file: %s\n", output_filename); fflush(stderr); }
+    if (piece_manager_init(current_torrent, output_filename) != 0) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to initialize piece manager.\n"); fflush(stderr);
         free_tracker_response(&response);
-        torrent_free(current_torrent); // MOD: Free torrent on error
+        torrent_free(current_torrent);
         exit(1);
     }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Piece manager initialized successfully.\n"); fflush(stderr); }
 
-    // MOD: ******************** Connect to Peers from Tracker  ************************
-    printf("Attempting to connect to %d peers...\n", num_peers_from_tracker); // MOD: Log
-    for (int i = 0; i < num_peers_from_tracker; i++)
-    {
-        struct sockaddr_in peer_addr;
-        memset(&peer_addr, 0, sizeof(peer_addr));
-        peer_addr.sin_family = AF_INET;
-        peer_addr.sin_port = htons(response.peers[i].port);
-        peer_addr.sin_addr.s_addr = htonl(response.peers[i].address); // Address is in host byte order in struct, convert to network
+    if (num_peers_from_tracker > 0) {
+        if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Attempting to connect to %d peers from tracker...\n", num_peers_from_tracker); fflush(stderr); }
+        for (int i = 0; i < num_peers_from_tracker; i++) {
+            struct sockaddr_in peer_addr_sa;
+            memset(&peer_addr_sa, 0, sizeof(peer_addr_sa));
+            peer_addr_sa.sin_family = AF_INET;
+            peer_addr_sa.sin_port = htons(response.peers[i].port);
+            peer_addr_sa.sin_addr.s_addr = htonl(response.peers[i].address);
 
-        // Add the peer using peer_manager (initiates connection and sends handshake)
-        // peer_manager_add_peer handles adding to fds/peers arrays internally
-        int peer_index = peer_manager_add_peer(*current_torrent, &peer_addr, sizeof(peer_addr)); // MOD: Pass torrent pointer, use &peer_addr
-        if (peer_index != -1)
-        {
-            // Successfully initiated connection (might still be in progress)
-            fprintf(stderr, "Successfully initiated connection (might still be in progress)\n");
-        }
-        else
-        {
-            
-            // Failed to add peer (e.g., socket error, max peers)
-            if (get_args().debug_mode)
-                fprintf(stderr, "Failed to add peer %s:%d\n", inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
+            char peer_ip_log_str[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &(peer_addr_sa.sin_addr), peer_ip_log_str, INET_ADDRSTRLEN);
+            if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Attempting to add peer %s:%d\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port)); fflush(stderr); }
+
+            int peer_index = peer_manager_add_peer(*current_torrent, &peer_addr_sa, sizeof(peer_addr_sa));
+            if (peer_index != -1) {
+                if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Initiated connection process for peer %s:%d. Peer array index: %d. Current num_fds: %d, num_peers: %d\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port), peer_index, *get_num_fds(), *get_num_peers()); fflush(stderr); }
+            } else {
+                if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Failed to add peer %s:%d.\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port)); fflush(stderr); }
+            }
         }
     }
 
-    free_tracker_response(&response); // Free the tracker response after connecting attempts
+    free_tracker_response(&response);
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Freed tracker response data.\n"); fflush(stderr); }
 
-    // Start listening for incoming connections and messages (requests)
-    if (client_listen(args.port) != 0)
-    { // MOD: Check listen result
-        fprintf(stderr, "Error: Failed to start listening.\n");
-        piece_manager_destroy();       // MOD: Clean up piece manager
-        torrent_free(current_torrent); // MOD: Clean up torrent
-        exit(1);
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Starting client listener on port %d...\n", args.port); fflush(stderr); }
+    if (client_listen(args.port) != 0) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to start listening on port %d.\n", args.port); fflush(stderr);
+        // piece_manager_destroy(); // Already called if client_listen fails and calls exit
+        // torrent_free(current_torrent);
+        exit(1); // client_listen will exit on critical failure, this is redundant if so.
+                 // but if it returns -1 without exiting, this handles it.
+    }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Client listener started.\n"); fflush(stderr); }
+
+    if (get_args().debug_mode) {
+        fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Entering main poll loop. Initial num_fds: %d, num_peers: %d\n", *get_num_fds(), *get_num_peers());
+        fflush(stderr);
     }
 
-    // MOD: ***************** Main Poll Loop *******************************
-    if (get_args().debug_mode)
-        fprintf(stderr, "Entering main poll loop...\n");
+    // ... (rest of the main loop and cleanup with fflush(stderr) added to its logs too) ...
+    // make sureea every fprintf(stderr,...) in the loop and cleanup is followed by fflush(stderr);
 
-    while (1)
-    {
-        // TODO: Add periodic tracker updates (based on interval)
-        // TODO: downloading logic (requesting blocks from peers)
-        // TODO: choking/unchoking logic
-        // TODO: keepalive messages (send regularly if no other messages sent)
-
-        // Use a timeout in poll to allow for periodic tasks (like tracker updates, rate calculations)
-        int poll_timeout_ms = 1000;                            // Poll with a 1-second timeout
-        int poll_result = poll(fds, num_fds, poll_timeout_ms); // MOD: Use num_fds
-
-        if (poll_result == -1)
-        {
-            if (errno == EINTR)
-                continue; // Interrupted by signal, just retry poll
-            if (get_args().debug_mode)
-                fprintf(stderr, "Poll failed: %s\n", strerror(errno)); // MOD: Log error
-            break;                                                     // Exit loop on fatal poll error
+    while (1) {
+        if (get_args().debug_mode && (*get_num_fds() > 1 || *get_num_peers() > 0) ) {
+             
+             fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Polling %d FDs. Active Peers: %d. Downloaded: %llu / %ld (%.2f%%)\n",
+                     *get_num_fds(), *get_num_peers(),
+                     piece_manager_get_bytes_downloaded_total(), total_len,
+                     total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() * 100.0 / total_len : 0.0);
+             fflush(stderr);
         }
 
-        // Handle events on the listen socket (new incoming connections)
-        if (fds[0].revents & POLLIN)
-        {
-            // Accept the incoming connection and add the peer
-            // peer_manager_add_peer called with addr=NULL attempts to accept ONE connection
-            peer_manager_add_peer(*current_torrent, NULL, 0); // MOD: Pass torrent pointer
-            // No need to loop or check return here, just try to accept one per poll cycle
+        int poll_timeout_ms = 1000;
+        int poll_result = poll(fds, *get_num_fds(), poll_timeout_ms);
+
+        if (poll_result == -1) {
+            if (errno == EINTR) {
+                if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Poll interrupted by signal, retrying.\n"); fflush(stderr); }
+                continue;
+            }
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Poll failed: %s. Exiting loop.\n", strerror(errno)); fflush(stderr);
+            }
+            break;
         }
 
-        // Handle events on peer sockets (starting from index 1)
-        for (int i = 1; i < num_fds; /* no increment here, done manually*/)
-        {
-            Peer *current_peer = &peers[i - 1]; // Peers array is 0-indexed, fds is 1-indexed
+        if (poll_result == 0 && get_args().debug_mode && (*get_num_fds() <=1 && *get_num_peers() == 0)) { // MOD: Log timeout only if no peers and nothing to do
+             fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Poll timed out. No events. No connected peers. Num_fds: %d\n", *get_num_fds()); fflush(stderr);
+        }
 
-            // Check for connection complete on outgoing sockets
-            if (fds[i].revents & POLLOUT)
-            {
-                if (!current_peer->handshake_done)
-                { // Only process POLLOUT for connections not yet handshaked
-                    // Check if connect is complete by getting socket error
+
+        if (fds[0].revents & POLLIN) {
+            if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Incoming connection detected on listen socket %d.\n", fds[0].fd); fflush(stderr); }
+            peer_manager_add_peer(*current_torrent, NULL, 0);
+        }
+
+        for (int i = 1; i < *get_num_fds(); ) {
+            Peer *current_peer = &peers[i - 1];
+            int peer_log_idx = i-1; // For logging
+
+            if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                if (get_args().debug_mode) {
+                    fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Peer at fds[%d] (socket %d, peer_idx %d) has error/hup/nval event (0x%x). Removing peer.\n", i, fds[i].fd, peer_log_idx, fds[i].revents); fflush(stderr);
+                }
+                peer_manager_remove_peer(current_peer);
+                continue;
+            }
+
+            if (fds[i].revents & POLLOUT) {
+                // Ensure current_peer points to a valid peer after potential removals
+                // This check might be redundant if continue is used above, but for safety:
+                if (i >= *get_num_fds()) break; // Array bounds changed
+                current_peer = &peers[i-1]; // Re-fetch, peer_manager_remove_peer might compact
+
+                if (!current_peer->handshake_done) {
                     int sock_err = 0;
                     socklen_t len = sizeof(sock_err);
-                    if (getsockopt(fds[i].fd, SOL_SOCKET, SO_ERROR, &sock_err, &len) == -1 || sock_err != 0)
-                    {
-                        if (get_args().debug_mode)
-                            fprintf(stderr, "[BTCLIENT]: Outgoing connection to %s:%d failed: %s. Removing peer.\n", inet_ntoa(*(struct in_addr *)&current_peer->address), ntohs(current_peer->port), sock_err == 0 ? "Unknown error" : strerror(sock_err));
+                    if (getsockopt(fds[i].fd, SOL_SOCKET, SO_ERROR, &sock_err, &len) == -1 || sock_err != 0) {
+                        if (get_args().debug_mode) {
+                            fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Outgoing connection for peer_idx %d (socket %d) failed: %s. Removing.\n", peer_log_idx, fds[i].fd, sock_err == 0 ? "Unknown err" : strerror(sock_err)); fflush(stderr);
+                        }
                         peer_manager_remove_peer(current_peer);
-                        // Array was compacted, stay at the same index
                         continue;
-                    }
-                    else
-                    {
-                        // Connection successful! Stop polling for POLLOUT
+                    } else {
                         fds[i].events &= ~POLLOUT;
-                        if (get_args().debug_mode)
-                            fprintf(stderr, "[BTCLIENT]: Outgoing connection to %s:%d successful.\n", inet_ntoa(*(struct in_addr *)&current_peer->address), ntohs(current_peer->port));
-                        // Handshake was already sent by peer_manager_add_peer
+                        fds[i].events |= POLLIN;
+                        if (get_args().debug_mode) {
+                            fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Outgoing connection for peer_idx %d (socket %d) successful.\n", peer_log_idx, fds[i].fd); fflush(stderr);
+                        }
                     }
+                } else {
+                     if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Socket %d for peer_idx %d writable (POLLOUT).\n", fds[i].fd, peer_log_idx); fflush(stderr); }
                 }
             }
 
-            // Handle incoming data from peers
-            if (fds[i].revents & POLLIN)
-            {
-                // MOD: receive messages from peers, handle accordingly
-                int receive_status = peer_manager_receive_messages(current_peer); // 1 = OK, 0 = Disconnected/Error
-                if (receive_status == 0)
-                {
-                    // peer_manager_receive_messages indicated disconnect or fatal error
+            if (fds[i].revents & POLLIN) {
+                 if (i >= *get_num_fds()) break;
+                 current_peer = &peers[i-1];
+
+                if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Data available from peer_idx %d (socket %d).\n", peer_log_idx, fds[i].fd); fflush(stderr); }
+                int receive_status = peer_manager_receive_messages(current_peer);
+                if (receive_status == 0) {
+                    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Peer_idx %d (socket %d) disconnected or error in receive. Removing.\n", peer_log_idx, fds[i].fd); fflush(stderr); }
                     peer_manager_remove_peer(current_peer);
-                    // Array was compacted, stay at the same index
-                    continue; // MOD: Skip increment to re-check the element moved here
+                    continue;
                 }
             }
-            // TODO: Check for POLLERR, POLLHUP, POLLNVAL on peer sockets and remove peer if set
+            
+            // Re-fetch current_peer pointer in case peer_manager_remove_peer was called by handlers above for a *different* peer, changing array
+            // This is complex; safer if peer_manager_remove_peer is only called if `current_peer` is the one being removed.
+            // The `continue` statements after removal should handle this loop's index correctly.
+            if (i >= *get_num_fds()) break; // Check bounds again before member access
+            current_peer = &peers[i-1];
 
-            // MOD: Implement download logic - Request blocks if unchoked and interested and need pieces
-            if (!current_peer->choked && current_peer->is_interesting && current_peer->handshake_done)
-            { // Must be unchoked by peer, interested in peer, and handshake done
-                // Request more blocks if we have less than MAX_OUTSTANDING_REQUESTS
-                while (current_peer->num_outstanding_requests < MAX_OUTSTANDING_REQUESTS)
-                {
-                    uint32_t piece_idx, begin, length;
-                    // Select a piece that the peer has and we need, then get an unrequested block from it
-                    // TODO: Implement piece selection logic (idk like rarest first)
-                    // below is temp a simplified approach: get *any* block from *any* piece the peer has and we need.
 
-                    // This simple approach would iterate through all our needed pieces and find one the peer has.
-                    // A better way is to select the piece *first* using piece_manager_select_piece_for_peer,
-                    // then get a block from *that* piece.
+            if (current_peer->handshake_done && !current_peer->choked && current_peer->is_interesting && current_peer->bitfield != NULL) {
+                 while (current_peer->num_outstanding_requests < MAX_OUTSTANDING_REQUESTS) {
+                    uint32_t block_begin_offset;
+                    uint32_t block_length;
+                    bool found_piece_to_request_this_iteration = false;
 
-                    // Simplified block requesting loop (replace with proper piece selection):
-                    bool requested = false;
-                    uint32_t total_pieces = piece_manager_get_total_pieces_count();
-                    for (uint32_t p_idx = 0; p_idx < total_pieces; ++p_idx)
-                    {
-                        // Check if we need this piece and the peer has it
-                        if (piece_manager_get_piece_state(p_idx) == PIECE_STATE_MISSING || piece_manager_get_piece_state(p_idx) == PIECE_STATE_PENDING)
-                        {
-                            // Check if peer has piece p_idx (need a helper function for peer bitfield check)
-                            // bool peer_has_piece = check_peer_has_piece(current_peer, p_idx); // TODO: Implement this helper
-                            // For now, using a direct check which is less modular:
-                            bool peer_has_piece = false;
-                            if (current_peer->bitfield && p_idx / 8 < current_peer->bitfield_bytes)
-                            {
-                                peer_has_piece = (current_peer->bitfield[p_idx / 8] >> (7 - (p_idx % 8))) & 1;
+                    uint32_t total_pieces_in_torrent = piece_manager_get_total_pieces_count();
+                    for (uint32_t p_idx = 0; p_idx < total_pieces_in_torrent; ++p_idx) {
+                        if (piece_manager_get_piece_state(p_idx) == PIECE_STATE_MISSING || piece_manager_get_piece_state(p_idx) == PIECE_STATE_PENDING) {
+                            bool peer_has_this_piece = false;
+                            if (current_peer->bitfield && (p_idx / 8) < current_peer->bitfield_bytes) {
+                                peer_has_this_piece = (current_peer->bitfield[p_idx / 8] >> (7 - (p_idx % 8))) & 1;
                             }
 
-                            if (peer_has_piece)
-                            {
-                                // Get the next unrequested block from this piece
-                                if (piece_manager_get_block_to_request_from_piece(p_idx, &begin, &length))
-                                {
-                                    // Found a block to request
-                                    if (peer_manager_send_request(current_peer, p_idx, begin, length) == 0)
-                                    {
-                                        requested = true;
-                                        // Mark block as requested in piece manager? Or handle re-requesting if it times out?
+                            if (peer_has_this_piece) {
+                                if (piece_manager_get_block_to_request_from_piece(p_idx, &block_begin_offset, &block_length)) {
+                                    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Requesting from peer_idx %d: Piece %u, Offset %u, Length %u\n", peer_log_idx, p_idx, block_begin_offset, block_length); fflush(stderr); }
+                                    if (peer_manager_send_request(current_peer, p_idx, block_begin_offset, block_length) == 0) {
+                                    
+                                    } else {
+                                        if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Failed to send REQUEST to peer_idx %d for Piece %u.\n", peer_log_idx, p_idx); fflush(stderr); }
                                     }
+                                    found_piece_to_request_this_iteration = true;
+                                    break;
                                 }
                             }
-                            if (requested)
-                                break; // Found a piece and requested a block, break inner loop
                         }
-                        if (!requested)
-                            break; // No blocks to request from any piece from this peer
                     }
+                    if (!found_piece_to_request_this_iteration) break;
                 }
-                // MOD: Update peer rates periodically
-                update_download_upload_rate(current_peer);
-
-                // MOD: Manually increment index
-                i++;
+            } else if (current_peer->handshake_done && current_peer->bitfield != NULL && !current_peer->is_interesting) {
+                // Simplified interest check (should ideally be in peer_manager or more robust)
+                uint32_t total_pieces_in_torrent = piece_manager_get_total_pieces_count();
+                 for (uint32_t p_idx = 0; p_idx < total_pieces_in_torrent; ++p_idx) {
+                     if (piece_manager_get_piece_state(p_idx) != PIECE_STATE_HAVE) {
+                         bool peer_has_this_piece = false;
+                         if (current_peer->bitfield && (p_idx / 8) < current_peer->bitfield_bytes) {
+                             peer_has_this_piece = (current_peer->bitfield[p_idx / 8] >> (7 - (p_idx % 8))) & 1;
+                         }
+                         if (peer_has_this_piece) {
+                             if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Peer_idx %d has pieces we need. Sending INTERESTED.\n", peer_log_idx); fflush(stderr); }
+                             // peer_manager_send_interested(current_peer); // This should set current_peer->is_interesting = true
+                             break; 
+                         }
+                     }
+                 }
             }
-
-            // MOD: Check if download is complete
-            if (piece_manager_is_download_complete())
-            {
-                fprintf(stderr, "Download complete!\n"); // piece_manager also logs this, but good to have here too
-                // TODO: Clean up connections gracefully (send stopped event to tracker, close sockets)
-                break; // Exit main loop
-            } else {
-                fprintf(stderr, "Download NOT complete, due to who knows what!\n");
-            }
+            i++;
         }
 
-        
-        // TODO: Clean up all active peer connections before destroying managers
+        if (piece_manager_is_download_complete()) {
+            fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: ****** Download complete! Output file: %s ******\n", output_filename); fflush(stderr);
+            break;
+        }
+    } 
 
-        piece_manager_destroy();       // MOD: Destroy piece manager
-        torrent_free(current_torrent); // MOD: Free torrent
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Exited main poll loop.\n"); fflush(stderr); }
 
-        // TODO: Close listen socket
-        // TODO: Free fds and peers arrays if they were dynamically allocated (they are static here)
-
-        if (get_args().debug_mode)
-            fclose(stderr); // MOD: Close the log file
-
-        return 0;
+    
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Cleaning up peer connections...\n"); fflush(stderr); }
+    for (int i_cleanup = (*get_num_fds()) - 1; i_cleanup >= 1; i_cleanup--) {
+        if (i_cleanup -1 < *get_num_peers() && i_cleanup -1 >= 0) {
+             Peer *peer_to_remove = &peers[i_cleanup-1];
+             if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Removing peer at fds index %d (socket %d, peer_idx %d) during final cleanup.\n", i_cleanup, fds[i_cleanup].fd, (i_cleanup-1) ); fflush(stderr); }
+             peer_manager_remove_peer(peer_to_remove);
+        } else {
+             if (get_args().debug_mode && fds[i_cleanup].fd != -1) { fprintf(stderr, "[BTCLIENT_MAIN]: Discrepancy or already closed fd at fds index %d during cleanup. num_peers: %d, fd: %d\n", i_cleanup, *get_num_peers(), fds[i_cleanup].fd); fflush(stderr); }
+             if(fds[i_cleanup].fd != -1) {
+                 close(fds[i_cleanup].fd);
+                 fds[i_cleanup].fd = -1;
+             }
+        }
     }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Finished peer cleanup. Num_fds: %d, Num_peers: %d\n", *get_num_fds(),*get_num_peers()); fflush(stderr); }
+
+
+    piece_manager_destroy();
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Piece manager destroyed.\n"); fflush(stderr); }
+
+    torrent_free(current_torrent);
+    current_torrent = NULL;
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Torrent data freed.\n"); fflush(stderr); }
+
+    if (fds[0].fd != -1) {
+        if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Closing listen socket %d.\n", fds[0].fd); fflush(stderr); }
+        close(fds[0].fd);
+        fds[0].fd = -1;
+    }
+    *get_num_fds() = 0;
+    *get_num_peers() = 0;
+
+    if (get_args().debug_mode) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Client shutting down.\n");
+        fflush(stderr); 
+    }
+    return 0;
 }

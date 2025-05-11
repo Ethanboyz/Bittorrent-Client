@@ -1,0 +1,17 @@
+[BTCLIENT_MAIN]: Debug mode enabled. Log output target: debug.log (or console if redirection failed).
+[BTCLIENT_MAIN]: Torrent file to parse: ./torrent_files/flatland-http.torrent
+[BTCLIENT_MAIN]: Allocated buffer for torrent file reading.
+[BTCLIENT_MAIN]: Successfully read 451 bytes from ./torrent_files/flatland-http.torrent
+[BTCLIENT_MAIN]: Torrent file parsed successfully (by torrent_parser module).
+[BTCLIENT_MAIN]: Announce URL from parsed torrent: http://cerf.cs.umd.edu:8000/announce
+[BTCLIENT_MAIN]: Freed torrent file read buffer.
+[BTCLIENT_MAIN]: Total torrent length: 210834 bytes.
+[BTCLIENT_MAIN]: Generated client peer ID: -PC0123-00057661466
+[BTCLIENT_MAIN]: Attempting tracker GET request to: http://cerf.cs.umd.edu:8000/announce
+[BTCLIENT_MAIN]: Tracker GET request completed.
+[BTCLIENT_MAIN]: Tracker Response -> Interval: 600, Complete: 3, Incomplete: 1, Num Peers: 4
+[BTCLIENT_MAIN]: Initializing piece manager for output file: pg45506.txt
+[PieceManager] Initialized. Pieces: 13, File size: 210834, Output: pg45506.txt
+[BTCLIENT_MAIN]: Piece manager initialized successfully.
+[BTCLIENT_MAIN]: Attempting to connect to 4 peers from tracker...
+[BTCLIENT_MAIN]: Attempting to add peer 173.230.75.46:51413
