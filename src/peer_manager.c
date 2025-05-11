@@ -139,7 +139,7 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
         }
         case BITFIELD: {
             memcpy(peer->bitfield, payload, payload_length);
-            // TODO: set bitfield bits!
+            peer->bitfield_bytes = payload_length;
             break;
         }
         case REQUEST: {
@@ -185,23 +185,29 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             // Not enough available bytes to read potential handshake
             return 0;
         }
-        memcpy(protocol, peer->incoming_buffer + offset + 1, 19);
-        if (!strncmp(protocol, PROTOCOL, 19)) {             // Confirm it's actually a handshake
-            offset += 28;                                   // Offset pstrlen, pstr, and reserved bytes
-            unsigned char recv_info_hash[20];
-            unsigned char recv_peer_id[20];
-            memcpy(recv_info_hash, peer->incoming_buffer + offset, 20);
-            offset += 20;
-            memcpy(recv_peer_id, peer->incoming_buffer + offset, 20);
-            offset += 20;
-            if (memcmp(recv_info_hash, torrent_get_info_hash(&peer->torrent), 20)) {
-                // We aren't serving this received info_hash!
+        if (peer->incoming_buffer[0] != 19 || memcmp(&peer->incoming_buffer[1], PROTOCOL, 19) != 0) {
+            if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Expected a handshake message, but got something else. Peer marked for removal\n");
+            return -1;
+        }
+        memcpy(protocol, peer->incoming_buffer + offset + 1, 19);   // Consume the pstr
+        if (strncmp(protocol, PROTOCOL, 19) == 0) {         // Confirm it's actually a handshake
+            // Consume the info_hash
+            if (memcmp(peer->incoming_buffer + 28, torrent_get_info_hash(&peer->torrent), 20)) {
+                if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: We aren't serving this received info_hash! Peer marked for removal\n");
                 return -1;
             }
+
+            // Consume the peer_id
+            memcpy(peer->id, peer->incoming_buffer + 48, 20);
             send_bitfield(peer);
+
+            // The entire handshake message has been consumed
+            offset += 68;
             available_bytes -= 68;
             peer->handshake_done = true;
-            memmove(peer->id, recv_peer_id, 20);
+        } else {
+            if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Expected a handshake message, but got something else. Peer marked for removal\n");
+            return -1;
         }
     }
 
@@ -468,6 +474,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
         peers[*num_peers].port = addr->sin_port;
     }
     // don't assign id until handshake is received
+    peers[*num_peers].we_initiated = (addr != NULL);
     ssize_t bytes_sent = 0;
     ssize_t bytes_recv = 0;
     gettimeofday(&peers[*num_peers].last_rate_time, NULL);

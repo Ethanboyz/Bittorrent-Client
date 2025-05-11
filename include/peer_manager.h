@@ -36,11 +36,12 @@ typedef struct {
     uint32_t address;                               // 32-bit IPv4 (big endian/network byte order)
     uint16_t port;                                  // Port 0-65535 (big endian/network byte order)
     unsigned char id[20];                           // Unique peer ID
+    bool we_initiated;                              // True if we initiated the connection, false if the peer initiated with us
 
     // Download/upload rate fields
     ssize_t bytes_sent;                             // Bytes sent since the last rate measure
     ssize_t bytes_recv;                             // Bytes received since the last rate measure
-    struct timeval last_rate_time;                 // Last time a rate measure was taken
+    struct timeval last_rate_time;                  // Last time a rate measure was taken
     double upload_rate;                             // Last measured upload rate
     double download_rate;                           // Last measured download rate
 
