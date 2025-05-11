@@ -116,19 +116,40 @@ static void dequeue_and_process_outstanding(Peer *peer, uint32_t piece_index, ui
 static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *payload, size_t payload_length) {
     switch (msg_id) {
         case CHOKE: {
+
+            // MOD: Log the choke message
+            if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Received CHOKE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
             peer->choked = true;
+
+            // MOD: Cancel any outstanding requests to this peer
+            peer->num_outstanding_requests = 0;
+            peer->requests_head = 0;
+            peer->requests_tail = 0;
             break;
         }
         case UNCHOKE: {
+            // MOD: Log
+            if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Received UNCHOKE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
             peer->choked = false;
             break;
         }
         case INTERESTED: {
-            // TODO: implement this!
+            // MOD: implement this!
+            if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Received INTERESTED from %s\n", inet_ntoa(*(struct in_addr*)&peer->address));
+            peer->is_interested = true;
+            // MOD: According to protocol, we should respond with UNCHOKE if we are choking them.
+            // The basic implementation starts with choking=true, so we would UNCHOKE here
+            // This might need more complex logic later (optimistic unchoke... go back to wikiii)
+            // For now, let's assume we *want* to unchoke interested peers
+            if (peer->choking) {
+                peer_manager_unchoke_peer(peer);
+            }
             break;
         }
         case NOT_INTERESTED: {
-            // TODO: implement this!
+            // MOD: implement this!
+            if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Received NOT_INTERESTED from %s\n", inet_ntoa(*(struct in_addr*)&peer->address));
+            peer->is_interested = false;
             break;
         }
         case HAVE: {
@@ -553,19 +574,49 @@ int peer_manager_remove_peer(Peer *peer) {
 }
 
 // Updates the download and upload rates. If you want the result rates, call get_download_rate() or get_upload_rate()
-// TODO: implement pseudocode!
+// MOD: implement pseudocode!
 int update_download_upload_rate(Peer *peer) {
+  struct timeval current_time;
+    if (gettimeofday(&current_time, NULL) != 0) { // MOD: Get current time
+        if (get_args().debug_mode) perror("[PEER_MANAGER]: Failed to get time for rate calculation"); // MOD: Log error
+        return -1;
+    }
+
     // 1. Get peer->last_rate_time, and calculate the time difference between it and the current time.
+    double time_diff = (current_time.tv_sec - peer->last_rate_time.tv_sec) + (current_time.tv_usec - peer->last_rate_time.tv_usec) / 1000000.0; // MOD: Calculate time difference in seconds
+
+    if (time_diff <= 0) {
+        // Avoid division by zero or negative time difference
+        // if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Time difference for rate calc is zero or negative.\n");
+        return 0; 
+    }
 
     // 2. Then, get peer->bytes_sent. Use that and the time difference from step 1 to calculate (bits/sec). This is the upload rate in bits/sec
+    peer->upload_rate = (double)peer->bytes_sent * 8.0 / time_diff; // MOD: Calculate upload rate
 
     // 3. Do the same with download rate, using peer->bytes_received.
+    peer->download_rate = (double)peer->bytes_recv * 8.0 / time_diff; // MOD: Calculate download rate
 
     // 4. Store the new upload and download rates into peer->upload_rate and peer->download_rate, respectively
+    // (Already done in steps 2 and 3)
 
     // 5. Set peer->last_rate_time so it is the current time.
+    peer->last_rate_time = current_time; // MOD: Update last rate time
 
-    // 6. Return 0 if there was no problems along the way. Return -1 if there was (like an arithmetic error, divide by 0 error, or whatever the heck you think could go wrong)
+    // 6. Reset byte counters for the next interval
+    peer->bytes_sent = 0; // MOD: Reset sent bytes
+    peer->bytes_recv = 0; // MOD: Reset received bytes
+
+    // MOD: Optional: Log rates
+    if (get_args().debug_mode) {
+        char addr_str[INET_ADDRSTRLEN];
+        struct in_addr addr;
+        addr.s_addr = peer->address;
+        inet_ntop(AF_INET, &addr, addr_str, sizeof(addr_str));
+        fprintf(stderr, "[PEER_MANAGER]: Rates for %s: Up=%.2f Kb/s, Down=%.2f Kb/s\n", addr_str, peer->upload_rate / 1024.0, peer->download_rate / 1024.0);
+    }
+
+    return 0;
 }
 
 // Get the last-updated download rates of peer and outputs them in the passed arguments.

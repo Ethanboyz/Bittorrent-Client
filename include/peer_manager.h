@@ -13,8 +13,10 @@
 #include "torrent_parser.h"
 #include "piece_manager.h"
 
+#define DEFAULT_BLOCK_LENGTH 16384 // MOD: added this from piece_manager.h to remove make error due to calculation of MAX_INCOMING_BYTES
+
 #define MAX_OUTSTANDING_REQUESTS 10                 // Max number of requests "in-flight" per peer (arbitrary number 10, adjust as needed)
-#define MAX_PEERS 65535                             // Max number of peers per torrent
+#define MAX_PEERS 50                                // Max number of peers per torrent
 
 // Max number of incoming bytes based on the size of piece messages
 #define MAX_INCOMING_BYTES (MAX_OUTSTANDING_REQUESTS * (DEFAULT_BLOCK_LENGTH + 17))
