@@ -14,7 +14,8 @@ Example executable
 
 
 ## Logs (may or may not be maintained...)
-
+- 5/11: tried to create a "cohesive-ized" btclient executable that starts to idealize how we want components to talk to each other -- I think this should be area of debugging so we know which components need their logic rechecked.
+- 5/11: implemented ethans basic todos in peer manager. think we need to start thinking about what algorithims we want to incorporate since functions depend on those. (Jalal)
 - 5/10: Lots of the receive message logic is implemented, still needs work responding to each msg_id. Also, needs work with updating download/upload rates for a given peer. I left pseudocode for this. As a matter of fact, wherever needs work is marked with TODO (Ethan)
 - 5/10: completed a lot of the receiving messages from peers logic, still needs code to actually process the received messages (if anyone wants to help with that). I'll keep working into the night to finish the rest of everything (Ethan)
 - 5/10: as per ethans suggestion, I tried to add functionality to measure download/upload rates BUT since full SEND/RECV CODE hasn't been implemented in peer manager, I don't want to mess with anything and break the current thought process since measuring rates involves measuring bytes sent (Jalal)
