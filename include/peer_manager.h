@@ -42,8 +42,8 @@ typedef struct {
     ssize_t bytes_sent;                             // Bytes sent since the last rate measure
     ssize_t bytes_recv;                             // Bytes received since the last rate measure
     struct timeval last_rate_time;                  // Last time a rate measure was taken
-    double upload_rate;                             // Last measured upload rate
-    double download_rate;                           // Last measured download rate
+    double upload_rate;                             // Last measured upload rate (bits/sec)
+    double download_rate;                           // Last measured download rate (bits/sec)
 
     // Keep track of our outstanding requests to this peer
     int num_outstanding_requests;                   // Number of outstanding requests (messages in-flight)
@@ -124,9 +124,22 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
 int peer_manager_remove_peer(Peer *peer);
 
 /**
- * @brief Send a keepalive message to peer
+ * @brief Updates the download and upload rates. If you want the result rates, call get_download_rate() or get_upload_rate()
+ * @param peer The peer whose rates will be updated
  * @return 0 if successful, -1 otherwise
  */
-int send_keepalive_message(Peer *peer);
+int update_download_upload_rate(Peer *peer);
+
+/**
+ * @brief Get the last-updated download rates of peer and outputs them in the passed arguments.
+ * @return The download rate, in bits/sec, or -1 upon error
+ */
+double get_download_rate(Peer *peer);
+
+/**
+ * @brief Updates the last-updated upload rates of peer and outputs them in the passed arguments.
+ * @return The upload rate, in bits/sec, or -1 upon error
+ */
+double get_upload_rate(Peer *peer);
 
 #endif

@@ -84,7 +84,6 @@ static int send_handshake(Peer *peer) {
 }
 
 // Dequeue an outstanding request for peer (when a response is confirmed for that request), and write the response data
-// TODO: write the actual data to wherever it needs to go!
 static void dequeue_and_process_outstanding(Peer *peer, uint32_t piece_index, uint32_t piece_begin, const uint8_t *block, size_t length) {
     int found_index = -1;
     for (int i = 0; i < peer->num_outstanding_requests; i++) {              // Search for the outstanding_request index with the matching request
@@ -100,7 +99,7 @@ static void dequeue_and_process_outstanding(Peer *peer, uint32_t piece_index, ui
         return;
     }
 
-    // TODO: write block with length "length" at piece_index, piece_begin in file
+    // TODO: write block (the block data from the piece message) with length "length" at piece_index, piece_begin in file
 
     // Dequeue the request element, shift everything to fill the empty hole
     int curr_index = found_index;
@@ -114,7 +113,6 @@ static void dequeue_and_process_outstanding(Peer *peer, uint32_t piece_index, ui
 }
 
 // Handle a single message (with length prefix attached)
-// TODO: implement msg_id cases!
 static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *payload, size_t payload_length) {
     switch (msg_id) {
         case CHOKE: {
@@ -173,7 +171,6 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
 }
 
 // Parse as many full messages from incoming_buffer as possible. Return 0 upon success, -1 if peer is dropped (should decrement index if looping)
-// TODO: needs to handle handshake messages!
 static int parse_peer_incoming_buffer(Peer *peer) {
     size_t offset = 0;                                          // For keeping track of what was processed
     size_t available_bytes = peer->incoming_buffer_offset;      // How many bytes are left
@@ -415,8 +412,7 @@ int peer_manager_receive_messages(Peer *peer) {
     peer->incoming_buffer_offset += received;
     peer->bytes_recv += received;
     int parse = parse_peer_incoming_buffer(peer);
-    if (parse == -1) {      // Likely because a peer sent an invalid info_hash
-        if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: A peer sent us an info hash we aren't serving, marking for disconnect.\n");
+    if (parse == -1) {      // Peer marked for disconnect and removal, could be for many reasons
         return 0;
     }
     return received;
@@ -554,4 +550,30 @@ int peer_manager_remove_peer(Peer *peer) {
     }
 
     return 0;
+}
+
+// Updates the download and upload rates. If you want the result rates, call get_download_rate() or get_upload_rate()
+// TODO: implement pseudocode!
+int update_download_upload_rate(Peer *peer) {
+    // 1. Get peer->last_rate_time, and calculate the time difference between it and the current time.
+
+    // 2. Then, get peer->bytes_sent. Use that and the time difference from step 1 to calculate (bits/sec). This is the upload rate in bits/sec
+
+    // 3. Do the same with download rate, using peer->bytes_received.
+
+    // 4. Store the new upload and download rates into peer->upload_rate and peer->download_rate, respectively
+
+    // 5. Set peer->last_rate_time so it is the current time.
+
+    // 6. Return 0 if there was no problems along the way. Return -1 if there was (like an arithmetic error, divide by 0 error, or whatever the heck you think could go wrong)
+}
+
+// Get the last-updated download rates of peer and outputs them in the passed arguments.
+double get_download_rate(Peer *peer) {
+    return peer->download_rate;
+}
+
+// Updates the last-updated upload rates of peer and outputs them in the passed arguments.
+double get_upload_rate(Peer *peer) {
+    return peer->upload_rate;
 }
