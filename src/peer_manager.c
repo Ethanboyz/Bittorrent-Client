@@ -177,8 +177,37 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
 static int parse_peer_incoming_buffer(Peer *peer) {
     size_t offset = 0;                                          // For keeping track of what was processed
     size_t available_bytes = peer->incoming_buffer_offset;      // How many bytes are left
+
+    // Check if message is possibly a handshake
+    if (peer->handshake_done == false) {
+        char protocol[19];
+        if (available_bytes < 68) {
+            // Not enough available bytes to read potential handshake
+            return 0;
+        }
+        memcpy(protocol, peer->incoming_buffer + offset + 1, 19);
+        if (!strncmp(protocol, PROTOCOL, 19)) {             // Confirm it's actually a handshake
+            offset += 28;                                   // Offset pstrlen, pstr, and reserved bytes
+            unsigned char recv_info_hash[20];
+            unsigned char recv_peer_id[20];
+            memcpy(recv_info_hash, peer->incoming_buffer + offset, 20);
+            offset += 20;
+            memcpy(recv_peer_id, peer->incoming_buffer + offset, 20);
+            offset += 20;
+            if (memcmp(recv_info_hash, torrent_get_info_hash(&peer->torrent), 20)) {
+                // We aren't serving this received info_hash!
+                return -1;
+            }
+            send_bitfield(peer);
+            available_bytes -= 68;
+            peer->handshake_done = true;
+            memmove(peer->id, recv_peer_id, 20);
+        }
+    }
+
     while (available_bytes >= 4) {
         uint32_t length_prefix;
+
         memcpy(&length_prefix, peer->incoming_buffer + offset, 4);
         length_prefix = ntohl(length_prefix);
 
@@ -187,32 +216,9 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             available_bytes -= 4;
             continue;
         }
-        if (available_bytes < 4 + length_prefix) {
+        if (available_bytes < 4 + length_prefix) {              // Check if we have enough bytes for any full message
             // Ran out of data, cannot process anymore messages
             break;
-        }
-
-        if (length_prefix == 19) {                              // Message is possibly a handshake
-            char protocol[19];
-            if (available_bytes < 68) {
-                // Not enough available bytes to read potential handshake
-                break;
-            }
-            memcpy(protocol, peer->incoming_buffer + 1, 19);
-            if (!strncmp(protocol, PROTOCOL, 19)) {             // Confirm it's actually a handshake
-                offset += 28;                                   // Offset pstrlen, pstr, and reserved bytes
-                unsigned char recv_info_hash[20];
-                unsigned char recv_peer_id[20];
-                memcpy(recv_info_hash, peer->incoming_buffer + offset, 20);
-                offset += 20;
-                memcpy(recv_info_hash, peer->incoming_buffer + offset, 20);
-                offset += 20;
-                if (memcmp(recv_info_hash, torrent_get_info_hash(&peer->torrent), 20)) {
-                    // We aren't serving this received info_hash!
-                    return -1;
-                }
-                send_bitfield(peer);
-            }
         }
 
         // Full normal message available, process it
@@ -449,7 +455,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     
     // Initializing all the fields for the peers array
     peers[*num_peers].bitfield = NULL;      // We can expect this to be initialized later
-    peers[*num_peers].bitfield_bits = 0;
+    peers[*num_peers].bitfield_bytes = 0;
     // incoming_buffer doesn't need assignment
     peers[*num_peers].incoming_buffer_offset = 0;
     peers[*num_peers].torrent = torrent;
@@ -471,6 +477,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     peers[*num_peers].requests_tail = 0;
     peers[*num_peers].requests_head = 0;
     // outstanding_requests doesn't need assignment
+    peers[*num_peers].handshake_done = false;
     peers[*num_peers].choking = true;
     peers[*num_peers].is_interesting = false;
     peers[*num_peers].choked = true;

@@ -54,6 +54,7 @@ typedef struct {
     } outstanding_requests[MAX_OUTSTANDING_REQUESTS];
     
     // Manages if we can upload/download
+    bool handshake_done;                            // True meaning handshake exchange is complete with this peer
     bool choking;                                   // True meaning you are choking this peer (you won't upload to it)
     bool is_interesting;                            // True meaning we are interested in this peer (it has pieces we need)
     bool choked;                                    // True meaning this peer is choking us (don't bother sending requests to it)
