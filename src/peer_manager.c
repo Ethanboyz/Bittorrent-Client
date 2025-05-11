@@ -172,9 +172,9 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
     }
 }
 
-// Parse as many full messages from incoming_buffer as possible
+// Parse as many full messages from incoming_buffer as possible. Return 0 upon success, -1 if peer is dropped (should decrement index if looping)
 // TODO: needs to handle handshake messages!
-static void parse_peer_incoming_buffer(Peer *peer) {
+static int parse_peer_incoming_buffer(Peer *peer) {
     size_t offset = 0;                                          // For keeping track of what was processed
     size_t available_bytes = peer->incoming_buffer_offset;      // How many bytes are left
     while (available_bytes >= 4) {
@@ -182,7 +182,7 @@ static void parse_peer_incoming_buffer(Peer *peer) {
         memcpy(&length_prefix, peer->incoming_buffer + offset, 4);
         length_prefix = ntohl(length_prefix);
 
-        if (length_prefix == 0) {           // Message was a keepalive, continue
+        if (length_prefix == 0) {                               // Message was a keepalive, continue
             offset += 4;
             available_bytes -= 4;
             continue;
@@ -192,12 +192,26 @@ static void parse_peer_incoming_buffer(Peer *peer) {
             break;
         }
 
-        if (length_prefix == 19) {                      // Message was a handshake
-            char protocol[20];
-            strncpy(protocol, peer->incoming_buffer + 1, 20);
-            if (!strncmp(protocol, PROTOCOL, 19)) {      // Confirm it's actually a handshake
-                // TODO: get info_hash and peer_id
-                // TODO: if info_hash is unverifiable, drop connection (?), else, send bitfield
+        if (length_prefix == 19) {                              // Message is possibly a handshake
+            char protocol[19];
+            if (available_bytes < 68) {
+                // Not enough available bytes to read potential handshake
+                break;
+            }
+            memcpy(protocol, peer->incoming_buffer + 1, 19);
+            if (!strncmp(protocol, PROTOCOL, 19)) {             // Confirm it's actually a handshake
+                offset += 28;                                   // Offset pstrlen, pstr, and reserved bytes
+                unsigned char recv_info_hash[20];
+                unsigned char recv_peer_id[20];
+                memcpy(recv_info_hash, peer->incoming_buffer + offset, 20);
+                offset += 20;
+                memcpy(recv_info_hash, peer->incoming_buffer + offset, 20);
+                offset += 20;
+                if (memcmp(recv_info_hash, torrent_get_info_hash(&peer->torrent), 20)) {
+                    // We aren't serving this received info_hash!
+                    return -1;
+                }
+                send_bitfield(peer);
             }
         }
 
@@ -217,6 +231,7 @@ static void parse_peer_incoming_buffer(Peer *peer) {
         memmove(peer->incoming_buffer, peer->incoming_buffer + offset, available_bytes);    // The discovery of this function is revolutionary 0_0
         peer->incoming_buffer_offset = available_bytes;                                     // Next reads will be written after the leftover bytes
     }
+    return 0;
 }
 
 // Send interested message to peer
@@ -285,16 +300,18 @@ int peer_manager_unchoke_peer(Peer *peer) {
 
 // Send bitfield to peer
 int send_bitfield(Peer *peer) {
-    size_t bitfield_bytes = (peer->bitfield_bits + 7) / 8;
-    uint8_t message[5 + peer->bitfield_bits];
+    const uint8_t *our_bitfield;
+    size_t *bitfield_length = 0;
+    piece_manager_get_our_bitfield(&our_bitfield, bitfield_length);
+    uint8_t message[5 + (unsigned long)bitfield_length];
 
-    uint32_t length_prefix = htonl(1 + bitfield_bytes);     // 4 length bytes
+    uint32_t length_prefix = htonl(1 + (unsigned long)bitfield_length); // 4 length bytes
     memcpy(message, &length_prefix, 4);
-    message[4] = BITFIELD;                                  // id byte
+    message[4] = BITFIELD;                                              // id byte
 
-    memcpy(message + 5, peer->bitfield, bitfield_bytes);
+    memcpy(message + 5, our_bitfield, (unsigned long)bitfield_length);
 
-    if (send_message(peer, message, 5 + peer->bitfield_bits) == -1) {
+    if (send_message(peer, message, 5 + (unsigned long)bitfield_length) == -1) {
         if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: Failed to send bitfield\n");
         return -1;
     }
@@ -385,7 +402,11 @@ int peer_manager_receive_messages(Peer *peer) {
 
     peer->incoming_buffer_offset += received;
     peer->bytes_recv += received;
-    parse_peer_incoming_buffer(peer);
+    int parse = parse_peer_incoming_buffer(peer);
+    if (parse == -1) {      // Likely because a peer sent an invalid info_hash
+        if (get_args().debug_mode) fprintf(stderr, "[PEER_MANAGER]: A peer sent us an info hash we aren't serving, marking for disconnect.\n");
+        return 0;
+    }
     return received;
 }
 
@@ -394,7 +415,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     int new_sock;
     struct sockaddr_in new_addr;
     socklen_t addr_size = sizeof(new_addr);
-    memset(&new_addr, 0, sizeof(new_addr));   // Initialize
+    memset(&new_addr, 0, sizeof(new_addr));     // Initialize
 
     struct pollfd *fds = get_fds();
     Peer *peers = get_peers();

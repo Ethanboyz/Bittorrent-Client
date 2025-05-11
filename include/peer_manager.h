@@ -22,7 +22,7 @@
 typedef struct {
     // Announced by the peer to indicate which pieces it has
     unsigned char *bitfield;                        // Bitmask of pieces this peer has (1 bit -> 1 piece)
-    size_t bitfield_bits;                           // Number of bitfield elements (bits)
+    size_t bitfield_bytes;                          // Number of bitfield bytes
 
     // Buffer for incoming messages per peer to make message parsing easier
     unsigned char incoming_buffer[MAX_INCOMING_BYTES];
@@ -104,7 +104,7 @@ int peer_manager_send_keepalive_message(Peer *peer);
 
 /**
  * @brief Receive incoming, store in buffer, and process
- * @return Number of bytes received, 0 if the peer has disconnected (recommend to call peer_manager_remove_peer and decrement index if in a loop),
+ * @return Number of bytes received, 0 if the peer has been disconnected (recommend to call peer_manager_remove_peer and decrement index if in a loop),
  * or -1 upon error (likely due to no available messages) */
 int peer_manager_receive_messages(Peer *peer);
 
