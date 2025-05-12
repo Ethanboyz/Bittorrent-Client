@@ -30,22 +30,15 @@ typedef struct {
     unsigned char incoming_buffer[MAX_INCOMING_BYTES];
     size_t incoming_buffer_offset;                  // Bytes in use in incoming_buffer
 
-    // The torrent that this peer is associated with
-    Torrent torrent;
-
-    // Connectivity info
-    int sock_fd;                                    // Socket file descriptor
-    uint32_t address;                               // 32-bit IPv4 (big endian/network byte order)
-    uint16_t port;                                  // Port 0-65535 (big endian/network byte order)
-    unsigned char id[20];                           // Unique peer ID
-    bool we_initiated;                              // True if we initiated the connection, false if the peer initiated with us
-
     // Download/upload rate fields
     ssize_t bytes_sent;                             // Bytes sent since the last rate measure
     ssize_t bytes_recv;                             // Bytes received since the last rate measure
     struct timeval last_rate_time;                  // Last time a rate measure was taken
     double upload_rate;                             // Last measured upload rate (bits/sec)
     double download_rate;                           // Last measured download rate (bits/sec)
+
+    // The torrent that this peer is associated with
+    Torrent torrent;
 
     // Keep track of our outstanding requests to this peer
     int num_outstanding_requests;                   // Number of outstanding requests (messages in-flight)
@@ -55,6 +48,13 @@ typedef struct {
         uint32_t begin;
         uint32_t length;
     } outstanding_requests[MAX_OUTSTANDING_REQUESTS];
+
+    // Connectivity info
+    int sock_fd;                                    // Socket file descriptor
+    uint32_t address;                               // 32-bit IPv4 (big endian/network byte order)
+    uint16_t port;                                  // Port 0-65535 (big endian/network byte order)
+    unsigned char id[20];                           // Unique peer ID
+    bool we_initiated;                              // True if we initiated the connection, false if the peer initiated with us
     
     // Manages if we can upload/download
     bool handshake_done;                            // True meaning handshake exchange is complete with this peer
@@ -101,13 +101,13 @@ int send_bitfield(Peer *peer);
 int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length);
 
 /**
- * @brief Send a keepalive message to peer
+ * @brief Send a keepalive message to peer (try to send this every two minutes or less per peer)
  * @return 0 if successful, -1 otherwise
  */ 
 int peer_manager_send_keepalive_message(Peer *peer);
 
 /**
- * @brief Receive incoming, store in buffer, and process
+ * @brief Receive incoming, store in buffer, and process them accordingly. For example, request messages prompt the client to send pieces if possible
  * @return Number of bytes received, 0 if the peer has been disconnected (recommend to call peer_manager_remove_peer and decrement index if in a loop),
  * or -1 upon error (likely due to no available messages) */
 int peer_manager_receive_messages(Peer *peer);
@@ -133,14 +133,14 @@ int peer_manager_remove_peer(Peer *peer);
 int update_download_upload_rate(Peer *peer);
 
 /**
- * @brief Get the last-updated download rates of peer and outputs them in the passed arguments.
- * @return The download rate, in bits/sec, or -1 upon error
+ * @brief Get the last-updated download rates of peer.
+ * @return The download rate, in bits/sec
  */
 double get_download_rate(Peer *peer);
 
 /**
- * @brief Updates the last-updated upload rates of peer and outputs them in the passed arguments.
- * @return The upload rate, in bits/sec, or -1 upon error
+ * @brief Get the last-updated upload rates of peer.
+ * @return The upload rate, in bits/sec
  */
 double get_upload_rate(Peer *peer);
 
