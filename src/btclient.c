@@ -134,24 +134,24 @@ int main(int argc, char *argv[]) {
     // TODO: parse torrent file, do other stuff, idk
 
     // Start listening for incoming connections and messages (requests)
-    // client_listen(args.port);
-    // while (1) {
-    //     int poll_result = poll(fds, num_fds, 0);
-    //     if (poll_result == -1) {
-    //         if (get_args().debug_mode) fprintf(stderr, "Poll failed\n");
-    //         break;
-    //     }
-    //     peer_manager_add_peer(*torrent, NULL, 0);       // Adds new connections only if they are available
-    //     for (int i = 1; i < num_fds; i++) {
-    //         if (fds[i].revents & POLLIN) {
-    //             // TODO: receive messages from peers, handle accordingly
-    //             Peer peer = get_peers()[i - 1];
-    //             int rec = peer_manager_receive_messages(&peer);
-    //             if (rec == 0) {
-    //                 peer_manager_remove_peer(&peer);
-    //                 i--;
-    //             }
-    //         }
-    //     }
-    // }
+    client_listen(args.port);
+    while (1) {
+        int poll_result = poll(fds, num_fds, 0);
+        if (poll_result == -1) {
+            if (get_args().debug_mode) fprintf(stderr, "Poll failed\n");
+            break;
+        }
+        peer_manager_add_peer(*torrent, NULL, 0);       // Adds new connections only if they are available
+        for (int i = 1; i < num_fds; i++) {
+            if (fds[i].revents & POLLIN) {
+                // TODO: receive messages from peers, handle accordingly
+                Peer peer = get_peers()[i - 1];
+                int rec = peer_manager_receive_messages(&peer);
+                if (rec == 0) {
+                    peer_manager_remove_peer(&peer);
+                    i--;
+                }
+            }
+        }
+    }
 }
