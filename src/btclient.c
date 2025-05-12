@@ -40,8 +40,8 @@ int *get_num_fds(void) {
     return &num_fds;
 }
 
-struct Peer *get_peers(void) { // btclient.h declares struct Peer *
-    return (struct Peer *)peers; // peers is Peer[], cast to struct Peer *
+Peer *get_peers(void) { // btclient.h declares struct Peer *
+    return peers; // peers is Peer[], cast to struct Peer *
 }
 int *get_num_peers(void) {
     return &num_peers;

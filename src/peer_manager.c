@@ -163,6 +163,10 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
         }
         case REQUEST: {
             // TODO: implement this!
+            if (peer->choking) {
+                break;
+            }
+            
             break;
         }
         case PIECE: {
