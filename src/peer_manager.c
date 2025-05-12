@@ -105,7 +105,6 @@ static void dequeue_and_process_outstanding(Peer *peer, uint32_t piece_index, ui
             fprintf(stderr, "[PEER_MANAGER]: Attempted to dequeue outstanding request, but received verification failure when writing received piece. Requeuing...\n");
             fflush(stderr);
         }
-
         // We will simply leave the request untouched, hopefully we can receive another block that can be verified
         return;
     }
@@ -365,6 +364,10 @@ int send_bitfield(Peer *peer) {
 int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length) {
     if (peer->num_outstanding_requests >= MAX_OUTSTANDING_REQUESTS) {
         if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Too many outstanding requests for this peer, try again later\n"); fflush(stderr);}
+        return -1;
+    }
+    if (peer->choked) {
+        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: This peer is choking us, you cannot send a request to it\n"); fflush(stderr);}
         return -1;
     }
 
