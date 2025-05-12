@@ -228,7 +228,9 @@ static int parse_peer_incoming_buffer(Peer *peer) {
 
             // Consume the peer_id
             memcpy(peer->id, peer->incoming_buffer + 48, 20);
-            send_bitfield(peer);
+            size_t bitfield_length;
+            piece_manager_get_our_bitfield(NULL, &bitfield_length);
+            if (bitfield_length) send_bitfield(peer);
 
             // The entire handshake message has been consumed
             offset += 68;

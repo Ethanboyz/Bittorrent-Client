@@ -107,7 +107,6 @@ int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t reque
  * @brief Get the last time a keepalive message was sent to peer (this should ideally not exceed 120 seconds)
  * @return Seconds since the last keepalive message was sent to peer
  */
-
 double peer_manager_last_keepalive_message(Peer *peer);
 
 /**
