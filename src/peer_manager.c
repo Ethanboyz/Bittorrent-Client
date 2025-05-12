@@ -571,6 +571,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     } else {
         if (connect(new_sock, (struct sockaddr *)addr, addr_len) == -1) {
             if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+            return -1;
         }
     }
 

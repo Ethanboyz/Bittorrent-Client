@@ -119,7 +119,7 @@ int piece_manager_init(const Torrent *torrent, const char *output_filename) {
     output_file_name_global = strdup(output_filename);
     if (!output_file_name_global) {
         if (get_args().debug_mode) perror("[PieceManager] Error strdup output_filename");
-        if(client_bitfield) free(client_bitfield); client_bitfield = NULL;
+        if (client_bitfield) free(client_bitfield); client_bitfield = NULL;
         for(uint32_t i=0; i<total_torrent_pieces; ++i) free(all_managed_pieces[i].block_status_received);
         free(all_managed_pieces); all_managed_pieces = NULL;
         return -1;
@@ -152,7 +152,7 @@ int piece_manager_init(const Torrent *torrent, const char *output_filename) {
     bytes_we_have_downloaded = 0;
 
     if (get_args().debug_mode) {
-        fprintf(stderr, "[PieceManager] Initialized. Pieces: %u, File size: %llu, Output: %s\n",
+        fprintf(stderr, "[PieceManager] Initialized. Pieces: %u, File size: %lu, Output: %s\n",
                 total_torrent_pieces, total_torrent_file_length, output_file_name_global);
     }
     return 0;

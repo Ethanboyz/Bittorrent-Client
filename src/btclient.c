@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
             // We might not want to exit here, but continue with stderr as console for debugging.
         }
         fprintf(stderr, "[BTCLIENT_MAIN]: Debug mode enabled. Log output target: debug.log (or console if redirection failed).\n");
-        fflush(stderr); 
+        fflush(stderr);
     }
 
     const char *filename = args.filename;
@@ -259,7 +259,7 @@ int main(int argc, char *argv[]) {
     while (1) {
         if (get_args().debug_mode && (*get_num_fds() > 1 || *get_num_peers() > 0) ) {
              
-             fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Polling %d FDs. Active Peers: %d. Downloaded: %llu / %ld (%.2f%%)\n",
+             fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Polling %d FDs. Active Peers: %d. Downloaded: %lu / %ld (%.2f%%)\n",
                      *get_num_fds(), *get_num_peers(),
                      piece_manager_get_bytes_downloaded_total(), total_len,
                      total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() * 100.0 / total_len : 0.0);
