@@ -89,7 +89,7 @@ static void dequeue_and_process_outstanding(Peer *peer, uint32_t piece_index, ui
     for (int i = 0; i < peer->num_outstanding_requests; i++) {              // Search for the outstanding_request index with the matching request
         int index = (peer->requests_head + i) % MAX_OUTSTANDING_REQUESTS;   // Remember that we're working with a circular array here
         struct request element = peer->outstanding_requests[index];
-        if (element.index == piece_index && element.begin == piece_begin) {    // CONFIRM
+        if (element.index == piece_index && element.begin == piece_begin) {
             found_index = index;
             break;
         }
