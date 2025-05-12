@@ -409,6 +409,11 @@ int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t reque
     return 0;
 }
 
+// Get the last time (seconds) a keepalive message was sent to peer
+double peer_manager_last_keepalive_message(Peer *peer) {
+    return difftime(time(NULL), peer->last_keepalive_to_peer);
+}
+
 // Send a keepalive message to peer
 int peer_manager_send_keepalive_message(Peer *peer) {
     uint8_t message[4];
@@ -419,6 +424,7 @@ int peer_manager_send_keepalive_message(Peer *peer) {
         if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to send keepalive message\n"); fflush(stderr);}
         return -1;
     }
+    peer->last_keepalive_to_peer = time(NULL);
     return 0;
 }
 
@@ -514,6 +520,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     gettimeofday(&peers[*num_peers].last_rate_time, NULL);
     peers[*num_peers].upload_rate = 0;
     peers[*num_peers].download_rate = 0;
+    peers[*num_peers].last_keepalive_to_peer = time(NULL);
     peers[*num_peers].num_outstanding_requests = 0;
     peers[*num_peers].requests_tail = 0;
     peers[*num_peers].requests_head = 0;

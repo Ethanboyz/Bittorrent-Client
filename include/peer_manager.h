@@ -37,6 +37,9 @@ typedef struct {
     double upload_rate;                             // Last measured upload rate (bits/sec)
     double download_rate;                           // Last measured download rate (bits/sec)
 
+    // For keepalive
+    time_t last_keepalive_to_peer;                  // The last time a keepalive was sent to this peer
+
     // The torrent that this peer is associated with
     Torrent torrent;
 
@@ -99,6 +102,13 @@ int send_bitfield(Peer *peer);
  * @return 0 if successful, -1 if message is not sent (there are too many outstanding requests for this peer).
  */
 int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length);
+
+/** 
+ * @brief Get the last time a keepalive message was sent to peer (this should ideally not exceed 120 seconds)
+ * @return Seconds since the last keepalive message was sent to peer
+ */
+
+double peer_manager_last_keepalive_message(Peer *peer);
 
 /**
  * @brief Send a keepalive message to peer (try to send this every two minutes or less per peer)
