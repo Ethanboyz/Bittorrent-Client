@@ -263,11 +263,13 @@ TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char
     int sock = socket(res->ai_family, SOCK_STREAM, res->ai_protocol);
     if (sock == -1) {
         perror("Socket creation failed");
+        freeaddrinfo(res);
         exit(1);
     }
     if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
         close(sock);
         perror("Connection failed");
+        freeaddrinfo(res);
         exit(1);
     }
     freeaddrinfo(res);
@@ -334,8 +336,195 @@ TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char
         len += bytes_read;
     }
     res_buf[len] = '\0';
-    // printf("=== raw response ===\n%.*s\n", (int)len, res_buf);
-    return parse_response(res_buf, len);
+
+    // free sockets and SSL
+    if (ssl) {
+        SSL_shutdown(ssl);
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+    }
+    close(sock);
+    
+    TrackerResponse resp = parse_response(res_buf, len);
+    free(res_buf);
+    return resp;
+}
+
+void parse_scrape_response(TrackerResponse *response, char *buf, size_t buf_len) {
+    const char *data;
+    for (size_t i = 0; i + 4 <= buf_len; i++) {
+        if (memcmp(buf + i, "\r\n\r\n", 4) == 0) {
+            data = buf + i + 4;
+            break;
+        }
+    }
+    size_t data_len = buf_len - (data - buf);
+
+    // handle case where response is chunked
+    char *dechunked = NULL;
+    size_t dechunked_len = 0;
+    if (strstr(buf, "Transfer-Encoding: chunked")) {
+        dechunked_len = handle_chunked(data, data_len, &dechunked);
+        if (dechunked_len > 0) {
+            data = dechunked;
+            data_len = dechunked_len;
+        }
+    }
+
+    bencode_t ben, ben_item;
+    bencode_init(&ben, data, (int) data_len);
+    const char *key;
+    int key_len;
+    while (bencode_dict_has_next(&ben)) {
+        bencode_dict_get_next(&ben, &ben_item, &key, &key_len);
+        if (key_len == 5 && strncmp(key, "files", 5) == 0 && bencode_is_dict(&ben_item)) {
+            bencode_t files = ben_item;
+            while (bencode_dict_has_next(&files)) {
+                bencode_t info_entry;
+                const char *info_key;
+                int info_len;
+                bencode_dict_get_next(&files, &info_entry, &info_key, &info_len);
+                bencode_t stats = info_entry;
+                while (bencode_dict_has_next(&stats)) {
+                    bencode_t field;
+                    const char *field_key;
+                    int field_key_len;
+
+                    bencode_dict_get_next(&stats, &field, &field_key, &field_key_len);
+                    if (field_key_len == 8 && strncmp(field_key, "complete", 8) == 0 && bencode_is_int(&field)) {
+                        long complete;
+                        bencode_int_value(&field, &complete);
+                        response->complete = complete;
+                    } else if (field_key_len == 10 && strncmp(field_key, "incomplete", 10) == 0 && bencode_is_int(&field)) {
+                        long incomplete;
+                        bencode_int_value(&field, &incomplete);
+                        response->incomplete = incomplete;
+                    }
+                }
+            }
+        }
+        break;
+    }
+    free(dechunked);
+}
+
+// tracker scrape convention for HTTP(S)
+// returns 0 if scrape is not supported for this tracker 
+int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_hash) {
+    struct url_parts parts = {0};
+    parse_announce(announce, &parts);
+
+    char scrape_path[128];
+    strncpy(scrape_path, parts.path, sizeof(scrape_path));
+    char *to_replace = strstr(scrape_path, "announce");
+    // scrape convention is not supported 
+    if (!to_replace) {
+        return 0;
+    }
+
+    memmove(to_replace + strlen("scrape"), to_replace + 8, strlen(to_replace + 8) + 1);
+    memcpy(to_replace, "scrape", strlen("scrape"));
+
+    // set parameters for request
+    char *encoded_hash = encode_bin_data(info_hash, 20);
+    char params[1024];
+    snprintf(params, sizeof(params), "%s?info_hash=%s", scrape_path, encoded_hash);
+    free(encoded_hash);
+
+    struct addrinfo hints = {0}, *res;
+    hints.ai_socktype = SOCK_STREAM;
+    getaddrinfo(parts.host, parts.port, &hints, &res);
+
+    // create a socket and connect to tracker 
+    int sock = socket(res->ai_family, SOCK_STREAM, res->ai_protocol);
+    if (sock == -1) {
+        perror("Socket creation failed");
+        freeaddrinfo(res);
+        return 0;
+    }
+    if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
+        close(sock);
+        perror("Connection failed");
+        freeaddrinfo(res);
+        return 0;
+    }
+    freeaddrinfo(res);
+
+    // support for HTTPS tracker
+    SSL_CTX *ctx = NULL;
+    SSL *ssl = NULL;
+    if (strcmp(parts.protocol, "https") == 0) {
+        SSL_library_init();
+        OpenSSL_add_all_algorithms();
+        SSL_load_error_strings();
+
+        ctx = SSL_CTX_new(TLS_client_method());
+        ssl = SSL_new(ctx);
+        SSL_set_fd(ssl, sock);
+        if (!SSL_set_tlsext_host_name(ssl, parts.host)) {
+            fprintf(stderr, "Failed to set SNI to %s\n", parts.host);
+            SSL_free(ssl);
+            SSL_CTX_free(ctx);
+            close(sock);
+            return 0;
+        }
+        if (SSL_connect(ssl) <= 0) {
+            unsigned long err = ERR_get_error();                           
+            fprintf(stderr, "SSL_connect error: %s\n", ERR_error_string(err, NULL)); 
+            SSL_free(ssl);
+            SSL_CTX_free(ctx);
+            close(sock);
+            return 0;
+        }
+    }
+
+    // build entire GET request
+    char req[2048];
+    int num = snprintf(req, sizeof(req),
+        "GET %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "Connection: close\r\n\r\n",
+        params, parts.host);
+
+    if (ssl) {
+        SSL_write(ssl, req, num);
+    } else {
+        send(sock, req, strlen(req), 0);
+    }
+
+    // receive request  
+    size_t len = 0, max_len = 4096;
+    char *res_buf = malloc(max_len);
+    while (1) {
+        int bytes_read;
+        if (len >= max_len) {
+            max_len *= 2;
+            res_buf = realloc(res_buf, max_len);
+        }
+        if (ssl) {
+            bytes_read = SSL_read(ssl, res_buf + len, max_len - len);
+        } else {
+            bytes_read = recv(sock, res_buf + len, max_len - len, 0);
+        }
+        if (bytes_read <= 0) {
+            break;
+        }
+        len += bytes_read;
+    }
+    res_buf[len] = '\0';
+
+    // free sockets and SSL
+    if (ssl) {
+        SSL_shutdown(ssl);
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+    }
+    close(sock);
+    
+    // parse response here 
+    parse_scrape_response(response, res_buf, len);
+    free(res_buf);
+    return 1;
 }
 
 void free_tracker_response(TrackerResponse *response) {
@@ -344,7 +533,5 @@ void free_tracker_response(TrackerResponse *response) {
     }
     memset(response, 0, sizeof(*response));
 }
-
-// TODO: scrape request (this is more important to get done)
 
 // TODO: UDP support

@@ -118,6 +118,14 @@ int main(int argc, char *argv[]) {
         printf("port is %d and addr is %" PRIu32 "\n", response.peers[i].port, response.peers[i].address);
     }
 
+    // printf lines for sanity checks
+    printf("incomplete is %d\n", response.incomplete);
+    printf("complete is %d\n", response.complete);
+
+    http_scrape(&response, torrent->announce, torrent->info_hash);
+    printf("new incomplete is %d\n", response.incomplete);
+    printf("new complete is %d\n", response.complete);
+
     free_tracker_response(&response);
     torrent_free(torrent);
     free(buffer);
@@ -126,24 +134,24 @@ int main(int argc, char *argv[]) {
     // TODO: parse torrent file, do other stuff, idk
 
     // Start listening for incoming connections and messages (requests)
-    client_listen(args.port);
-    while (1) {
-        int poll_result = poll(fds, num_fds, 0);
-        if (poll_result == -1) {
-            if (get_args().debug_mode) fprintf(stderr, "Poll failed\n");
-            break;
-        }
-        peer_manager_add_peer(*torrent, NULL, 0);       // Adds new connections only if they are available
-        for (int i = 1; i < num_fds; i++) {
-            if (fds[i].revents & POLLIN) {
-                // TODO: receive messages from peers, handle accordingly
-                Peer peer = get_peers()[i - 1];
-                int rec = peer_manager_receive_messages(&peer);
-                if (rec == 0) {
-                    peer_manager_remove_peer(&peer);
-                    i--;
-                }
-            }
-        }
-    }
+    // client_listen(args.port);
+    // while (1) {
+    //     int poll_result = poll(fds, num_fds, 0);
+    //     if (poll_result == -1) {
+    //         if (get_args().debug_mode) fprintf(stderr, "Poll failed\n");
+    //         break;
+    //     }
+    //     peer_manager_add_peer(*torrent, NULL, 0);       // Adds new connections only if they are available
+    //     for (int i = 1; i < num_fds; i++) {
+    //         if (fds[i].revents & POLLIN) {
+    //             // TODO: receive messages from peers, handle accordingly
+    //             Peer peer = get_peers()[i - 1];
+    //             int rec = peer_manager_receive_messages(&peer);
+    //             if (rec == 0) {
+    //                 peer_manager_remove_peer(&peer);
+    //                 i--;
+    //             }
+    //         }
+    //     }
+    // }
 }

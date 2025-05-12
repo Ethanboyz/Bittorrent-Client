@@ -15,6 +15,7 @@ Example executable
 
 ## Logs (may or may not be maintained...)
 
+- 5/12: Tracker scrape convention implemented for HTTP and HTTPS (Priya)
 - 5/10: Lots of the receive message logic is implemented, still needs work responding to each msg_id. Also, needs work with updating download/upload rates for a given peer. I left pseudocode for this. As a matter of fact, wherever needs work is marked with TODO (Ethan)
 - 5/10: completed a lot of the receiving messages from peers logic, still needs code to actually process the received messages (if anyone wants to help with that). I'll keep working into the night to finish the rest of everything (Ethan)
 - 5/10: as per ethans suggestion, I tried to add functionality to measure download/upload rates BUT since full SEND/RECV CODE hasn't been implemented in peer manager, I don't want to mess with anything and break the current thought process since measuring rates involves measuring bytes sent (Jalal)

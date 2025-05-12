@@ -17,5 +17,8 @@ typedef struct {
 TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char *peer_id, 
     int port, long uploaded, long downloaded, long left);
 
+// send HTTP or HTTPS GET request for scrape
+int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_hash);
+
 // free list of peers
 void free_tracker_response(TrackerResponse *response);
