@@ -103,6 +103,12 @@ int send_bitfield(Peer *peer);
  */
 int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length);
 
+/**
+ * @brief Sends a peer message as response to incoming request message.
+ * @return 0 if successful, -1 if message is not sent.
+ */
+int send_piece(Peer *peer, uint32_t index, uint32_t begin, uint32_t length, uint8_t *block);
+
 /** 
  * @brief Get the last time a keepalive message was sent to peer (this should ideally not exceed 120 seconds)
  * @return Seconds since the last keepalive message was sent to peer

@@ -171,11 +171,47 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             break;
         }
         case REQUEST: {
-            // TODO: implement this!
+            uint32_t index = 0, begin = 0, length = 0;
+            memcpy(&index, payload + 0, 4);
+            memcpy(&begin, payload + 4, 4);
+            memcpy(&length, payload + 8, 4);
+            index = ntohl(index);
+            begin = ntohl(begin);
+            length = ntohl(length);
+            
             if (peer->choking) {
+                if (get_args().debug_mode) {
+                    fprintf(stderr, "[PEER_MANAGER]: Ignoring REQUEST for idx=%u peer is choking us\n", 
+                            index);
+                }
                 break;
             }
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received REQUEST idx=%u begin=%u len=%u from %s\n",
+                        index, begin, length, inet_ntoa(*(struct in_addr*)&peer->address));
+            }
             
+            // make sure we have piece that block is being requested from
+            if (piece_manager_get_piece_state(index) != PIECE_STATE_HAVE) {
+                if (get_args().debug_mode) {
+                    fprintf(stderr, "[PEER_MANAGER]: Ignoring REQUEST for idx=%u we don't have\n", 
+                            index);
+                }
+                break;
+            }
+
+            uint8_t *block = malloc(length);
+            if (!piece_manager_read_block(index, begin, length, block)) {
+                if (get_args().debug_mode) {
+                    fprintf(stderr, "[PEER_MANAGER]: Ignoring REQUEST for idx=%u block could not be read from file\n", 
+                            index);
+                }
+                free(block);
+                break;
+            }
+
+            // respond to peer with piece message of requested block
+            send_piece(peer, index, begin, length, block);
             break;
         }
         case PIECE: {
@@ -408,6 +444,44 @@ int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t reque
     peer->requests_tail = (peer->requests_tail + 1) % MAX_OUTSTANDING_REQUESTS;
     peer->num_outstanding_requests++;
 
+    return 0;
+}
+
+// Send piece message to the peer the sent an incoming request message
+// NOTE: The "piece" message actually holds a block
+int send_piece(Peer *peer, uint32_t index, uint32_t begin, uint32_t length, uint8_t *block) {
+    uint8_t *message = malloc(13 + length);
+
+    uint32_t length_prefix = htonl(9 + (unsigned long)length);
+    memcpy(message, &length_prefix, 4);
+    message[4] = PIECE;
+    index = htonl(index);
+    memcpy(message + 5,  &index, 4);
+    begin = htonl(begin);
+    memcpy(message + 9,  &begin, 4);
+    memcpy(message + 13, block, length);
+
+    if (get_args().debug_mode) {
+        struct in_addr ia = { .s_addr = peer->address };
+        fprintf(stderr,
+                "[PEER_MANAGER]: Sending PIECE idx=%u begin=%u len=%u to %s\n",
+                index, begin, length,
+                inet_ntoa(ia));
+    }
+
+    if (send_message(peer, message, 13 + length) < 0) {
+        if (get_args().debug_mode) {
+            fprintf(stderr,
+                    "[PEER_MANAGER]: Failed to send PIECE idx=%u to peer\n",
+                    index);
+        }
+        free(block);
+        free(message);
+        return -1;
+    }
+
+    free(block);
+    free(message);
     return 0;
 }
 

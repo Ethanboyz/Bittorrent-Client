@@ -390,6 +390,29 @@ bool piece_manager_has_block(uint32_t piece_index, uint32_t block_offset) {
     return piece->block_status_received[block_index_in_piece];
 }
 
+bool piece_manager_read_block(uint32_t piece_index, uint32_t begin, uint32_t block_length, uint8_t *block) {
+    ManagedPiece *piece = &all_managed_pieces[piece_index];
+
+    if (block_length == 0 && piece->piece_length > 0) return true; // Empty block for non-empty piece
+    if (begin + block_length > piece->piece_length) return false; // Block out of bounds
+
+    uint32_t block_index_in_piece = (DEFAULT_BLOCK_LENGTH > 0) ? (begin / DEFAULT_BLOCK_LENGTH) : 0;
+    if (block_index_in_piece >= piece->num_total_blocks && piece->num_total_blocks > 0) return false; // Invalid block index
+
+    // calculate file offset to where block is
+    uint64_t file_offset = (uint64_t)piece_index * standard_piece_length + begin;
+    if (fseeko(output_file_ptr, file_offset, SEEK_SET) < 0) {
+        return false;
+    }
+
+    // read block data from file into buffer 
+    if (fread(block, 1, block_length, output_file_ptr) != block_length) {
+        return false;
+    }
+    
+    return true;
+}
+
 // --- Helper Function Implementations ---
 static uint32_t calculate_num_blocks_for_piece(uint32_t piece_len_bytes) {
     if (piece_len_bytes == 0) return 0;

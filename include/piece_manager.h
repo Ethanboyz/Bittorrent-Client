@@ -142,4 +142,14 @@ uint64_t piece_manager_get_bytes_left_total(void);
  */
 bool piece_manager_has_block(uint32_t piece_index, uint32_t block_offset);
 
+/**
+ * @brief Read a block from the file into block buffer parameter.
+ * @param piece_idx Index of the piece from which block is needed.
+ * @param begin Byte offset within the piece.
+ * @param block_length Length of the block's data.
+ * @param block Buffer for block data read.
+ * @return true if block read, false otherwise.
+ */
+bool piece_manager_read_block(uint32_t piece_index, uint32_t begin, uint32_t block_length, uint8_t *block);
+
 #endif // PIECE_MANAGER_H
