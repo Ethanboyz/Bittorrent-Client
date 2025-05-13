@@ -139,8 +139,6 @@ TrackerResponse parse_response(char *buf, size_t buf_len) {
             break;
         }
     }
-    printf("data is %s\n", data);
-
     size_t data_len = buf_len - (data - buf);
 
     // handle case where response is chunked
@@ -236,11 +234,7 @@ TrackerResponse parse_response(char *buf, size_t buf_len) {
             }
         }
     }
-    printf("interval is %d\n", response.interval);
-    printf("incomplete is %d\n", response.incomplete);
-    printf("complete is %d\n", response.complete);
-    printf("number peers is %d\n", response.num_peers);
-
+    
     free(dechunked);
     return response;
 }
