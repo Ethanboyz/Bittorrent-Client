@@ -578,7 +578,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
     // Add the new peers socket to the pollfd array and peers array
     fds[*num_fds].fd = new_sock;
     fds[*num_fds].events = POLLIN;
-    num_fds++;
+    (*num_fds)++;
     
     // Initializing all the fields for the peers array
     peers[*num_peers].bitfield = NULL;      // We can expect this to be initialized later
