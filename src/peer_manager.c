@@ -518,7 +518,7 @@ int peer_manager_receive_messages(Peer *peer) {
         MSG_DONTWAIT
     );
     if (received == 0) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: receive_messages failed, peer has disconnected\n"); fflush(stderr);}
+        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: receive_messages failed, peer on socket %d has disconnected\n", peer->sock_fd); fflush(stderr);}
         return 0;
     }
     if (received == -1) {
