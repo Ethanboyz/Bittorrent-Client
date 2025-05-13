@@ -124,7 +124,7 @@ int peer_manager_receive_messages(Peer *peer);
 /**
  * @brief Add and connect to a new peer specified by the given address and length, then send it a handshake.
  * If addr is NULL, will attempt to add any peers via incoming connections instead, then send it a handshake.
- * @return The connected peer's socket file descriptor, 0 if there was no new peer (if addr is NULL), or -1 if failed to connect
+ * @return The connected peer's socket file descriptor, 0 if there was no new peer when addr is NULL or if peer at addr connection attempt timed out, or -1 if failed to connect
  */
 int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, socklen_t addr_len);
 

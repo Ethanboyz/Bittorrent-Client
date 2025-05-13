@@ -236,9 +236,9 @@ int main(int argc, char *argv[]) {
             inet_ntop(AF_INET, &(peer_addr_sa.sin_addr), peer_ip_log_str, INET_ADDRSTRLEN);
             if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Attempting to add peer %s:%d\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port)); fflush(stderr); }
 
-            int peer_index = peer_manager_add_peer(*current_torrent, &peer_addr_sa, sizeof(peer_addr_sa));
-            if (peer_index != -1) {
-                if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Initiated connection process for peer %s:%d. Peer array index: %d. Current num_fds: %d, num_peers: %d\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port), peer_index, *get_num_fds(), *get_num_peers()); fflush(stderr); }
+            int new_sock = peer_manager_add_peer(*current_torrent, &peer_addr_sa, sizeof(peer_addr_sa));
+            if (new_sock > 0) {
+                if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Initiated connection process for peer %s:%d. Peer socket: %d. Current num_fds: %d, num_peers: %d\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port), new_sock, *get_num_fds(), *get_num_peers()); fflush(stderr); }
             } else {
                 if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Failed to add peer %s:%d.\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port)); fflush(stderr); }
             }

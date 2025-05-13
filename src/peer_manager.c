@@ -7,6 +7,7 @@
 #include <argp.h>
 #include <sys/time.h>
 #include <sys/select.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <netinet/tcp.h>
 #include <stdbool.h>
@@ -571,9 +572,48 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
             return 0;
         }
     } else {
-        if (connect(new_sock, (struct sockaddr *)addr, addr_len) == -1) {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+        // Make the socket non-blocking for connect timeout
+        int flags = fcntl(new_sock, F_GETFL, 0);
+        fcntl(new_sock, F_SETFL, flags | O_NONBLOCK);
+        if (fcntl(new_sock, F_GETFL, 0) == -1 || fcntl(new_sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to set new socket to non-blocking\n"); fflush(stderr);}
             return -1;
+        }
+        int result = connect(new_sock, (struct sockaddr *)addr, addr_len);
+        if (result == -1 && errno != EINPROGRESS) {
+            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+            close(new_sock);
+            return -1;
+        }
+        struct pollfd connect_fd = {
+            new_sock,
+            POLLOUT
+        };
+
+        int connect_attempt = poll(&connect_fd, 1, 1000);       // Timeout for connect to be 1 second
+        if (connect_attempt == -1) {
+            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s (poll error)\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+            close(new_sock);
+            return -1;
+        } else if (connect_attempt == 0) {
+            // Connect attempt timed out, peer was listed by tracker but unreachable so simply skip over this peer
+            close(new_sock);
+            return 0;
+        } else {
+            // Connection succeeded, make socket blocking again and check for errors
+            int sock_error;
+            socklen_t error_length = sizeof(sock_error);
+            fcntl(new_sock, F_SETFL, flags);
+            if (getsockopt(new_sock, SOL_SOCKET, SO_ERROR, &sock_error, &error_length) == -1) {
+                if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Something went wrong while connecting %s\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+                close(new_sock);
+                return -1;
+            }
+            if (sock_error) {
+                if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Something went wrong while connecting %s: %s\n", inet_ntoa(addr->sin_addr), strerror(sock_error)); fflush(stderr);}
+                close(new_sock);
+                return -1;
+            }
         }
     }
 
