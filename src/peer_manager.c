@@ -206,11 +206,16 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             break;
         }
         case BITFIELD: {
+            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received BITFIELD from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            peer->bitfield = malloc(payload_length);
+            if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: Begin\n"); fflush(stderr);}
             memcpy(peer->bitfield, payload, payload_length);
+            if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: End\n"); fflush(stderr);}
             peer->bitfield_bytes = payload_length;
             break;
         }
         case REQUEST: {
+            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received REQUEST from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
             uint32_t index = 0, begin = 0, length = 0;
             memcpy(&index, payload + 0, 4);
             memcpy(&begin, payload + 4, 4);
@@ -258,6 +263,7 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             break;
         }
         case PIECE: {
+            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received PIECE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
             // Break down the piece message, then process it
             uint32_t index = 0;
             memcpy(&index, payload + 0, 4);
@@ -271,10 +277,12 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             break;
         }
         case CANCEL: {
+            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received CANCEL from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
             // Ignore this for now, this is for End Game
             break;
         }
         case PORT: {
+            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received PORT from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
             // Ignore this for now, this is for DHT
             break;
         }
@@ -285,6 +293,14 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
 static int parse_peer_incoming_buffer(Peer *peer) {
     size_t offset = 0;                                          // For keeping track of what was processed
     size_t available_bytes = peer->incoming_buffer_offset;      // How many bytes are left
+
+    /* ======= FOR DEBUG ONLY ======== */
+    for (int i = offset; i < available_bytes; i++) {
+        printf("%02x ", (unsigned char)peer->incoming_buffer[i]);
+    }
+    /* ======= FOR DEBUG ONLY ======== */
+
+    printf("\n");
 
     // Check if message is possibly a handshake
     if (peer->handshake_done == false) {
@@ -321,6 +337,12 @@ static int parse_peer_incoming_buffer(Peer *peer) {
         }
     }
 
+    /* ======= FOR DEBUG ONLY ======== */
+    for (int i = offset; i < available_bytes; i++) {
+        printf("%02x ", (unsigned char)peer->incoming_buffer[i]);
+    }
+    /* ======= FOR DEBUG ONLY ======== */
+
     while (available_bytes >= 4) {
         uint32_t length_prefix;
 
@@ -341,7 +363,6 @@ static int parse_peer_incoming_buffer(Peer *peer) {
         uint8_t msg_id = peer->incoming_buffer[offset + 4];
         unsigned char *payload = peer->incoming_buffer + offset + 5;
         size_t payload_length = length_prefix - 1;
-        if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: Handle message with msg_id %d, length %d\n", msg_id, payload_length); fflush(stderr);}
         handle_peer_message(peer, msg_id, payload, payload_length);
 
         size_t full_message_length = 4 + length_prefix;
