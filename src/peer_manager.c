@@ -208,9 +208,7 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
         case BITFIELD: {
             if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received BITFIELD from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
             peer->bitfield = malloc(payload_length);
-            if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: Begin\n"); fflush(stderr);}
             memcpy(peer->bitfield, payload, payload_length);
-            if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: End\n"); fflush(stderr);}
             peer->bitfield_bytes = payload_length;
             break;
         }
@@ -519,6 +517,13 @@ int peer_manager_send_keepalive_message(Peer *peer) {
 
 // Receive incoming, store in buffer, and process
 int peer_manager_receive_messages(Peer *peer) {
+    if (MAX_INCOMING_BYTES - peer->incoming_buffer_offset == 0) {
+        int parse = parse_peer_incoming_buffer(peer);
+        if (parse == -1) {      // Peer marked for disconnect and removal, could be for many reasons
+            return 0;
+        }
+        return -1;
+    }
     int received = recv(
         peer->sock_fd,
         peer->incoming_buffer + peer->incoming_buffer_offset,
