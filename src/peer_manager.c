@@ -587,7 +587,8 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
         }
         struct pollfd connect_fd = {
             new_sock,
-            POLLOUT
+            POLLOUT,
+            0
         };
 
         int connect_attempt = poll(&connect_fd, 1, 1000);       // Timeout for connect to be 1 second
