@@ -356,6 +356,7 @@ TrackerResponse http_get(struct url_parts *parts, unsigned char *info_hash, unsi
 }
 
 // TODO: set timeouts according to official protocol
+// send GET request for UDP
 TrackerResponse udp_get(struct url_parts *parts, unsigned char *info_hash, unsigned char *peer_id, 
         int port, long uploaded, long downloaded, long left) {
     
@@ -565,12 +566,9 @@ void parse_scrape_response(TrackerResponse *response, char *buf, size_t buf_len)
 }
 
 // tracker scrape convention for HTTP(S)
-int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_hash) {
-    struct url_parts parts = {0};
-    parse_announce(announce, &parts);
-
+int http_scrape(TrackerResponse *response, struct url_parts *parts, unsigned char *info_hash) {
     char scrape_path[128];
-    strncpy(scrape_path, parts.path, sizeof(scrape_path));
+    strncpy(scrape_path, parts->path, sizeof(scrape_path));
     char *to_replace = strstr(scrape_path, "announce");
     // scrape convention is not supported 
     if (!to_replace) {
@@ -588,7 +586,7 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
 
     struct addrinfo hints = {0}, *res;
     hints.ai_socktype = SOCK_STREAM;
-    getaddrinfo(parts.host, parts.port, &hints, &res);
+    getaddrinfo(parts->host, parts->port, &hints, &res);
 
     // create a socket and connect to tracker 
     int sock = socket(res->ai_family, SOCK_STREAM, res->ai_protocol);
@@ -608,7 +606,7 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
     // support for HTTPS tracker
     SSL_CTX *ctx = NULL;
     SSL *ssl = NULL;
-    if (strcmp(parts.protocol, "https") == 0) {
+    if (strcmp(parts->protocol, "https") == 0) {
         SSL_library_init();
         OpenSSL_add_all_algorithms();
         SSL_load_error_strings();
@@ -616,8 +614,8 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
         ctx = SSL_CTX_new(TLS_client_method());
         ssl = SSL_new(ctx);
         SSL_set_fd(ssl, sock);
-        if (!SSL_set_tlsext_host_name(ssl, parts.host)) {
-            fprintf(stderr, "Failed to set SNI to %s\n", parts.host);
+        if (!SSL_set_tlsext_host_name(ssl, parts->host)) {
+            fprintf(stderr, "Failed to set SNI to %s\n", parts->host);
             SSL_free(ssl);
             SSL_CTX_free(ctx);
             close(sock);
@@ -639,7 +637,7 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
         "GET %s HTTP/1.1\r\n"
         "Host: %s\r\n"
         "Connection: close\r\n\r\n",
-        params, parts.host);
+        params, parts->host);
 
     if (ssl) {
         SSL_write(ssl, req, num);
@@ -680,6 +678,116 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
     parse_scrape_response(response, res_buf, len);
     free(res_buf);
     return 0;
+}
+
+// tracker scrape convention for UDP
+// TODO: make connection request/response cleaner
+int udp_scrape(TrackerResponse *response, struct url_parts *parts, unsigned char *info_hash) {
+    struct addrinfo hints = {0}, *res;
+    hints.ai_socktype = SOCK_DGRAM;
+    getaddrinfo(parts->host, parts->port, &hints, &res);
+
+    // create a socket and connect to tracker 
+    int sock = socket(res->ai_family, SOCK_DGRAM, res->ai_protocol);
+    if (sock == -1) {
+        perror("Socket creation failed");
+        freeaddrinfo(res);
+        exit(1);
+    }
+
+    // send connect request
+    uint8_t connect[16];
+    uint64_t protocol_id = htobe64(0x41727101980);
+    uint32_t action = htonl(0);
+    uint32_t transaction_id = (uint32_t)rand();
+    uint32_t transaction_id_be = htonl(transaction_id);
+    memcpy(connect, &protocol_id, 8);
+    memcpy(connect + 8, &action, 4);
+    memcpy(connect + 12, &transaction_id_be, 4);
+
+    if (sendto(sock, connect, 16, 0, res->ai_addr, res->ai_addrlen) != 16) {
+        perror("Sending connect request failed");
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+
+    // receive connect response
+    uint8_t connect_res[16];
+    socklen_t addrlen = res->ai_addrlen;
+    if (recvfrom(sock, connect_res, sizeof(connect_res), 0, res->ai_addr, &addrlen) < 16) {
+        perror("Receiving connect request failed");
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+    uint32_t action_res = ntohl(*(uint32_t*)(connect_res));
+    uint32_t transaction_id_res = ntohl(*(uint32_t*)(connect_res + 4));
+    if (action_res != 0 || transaction_id_res != transaction_id) {
+        fprintf(stderr, "Connect request failed (action=%d, transaction ID=%d)\n", 
+            action_res, transaction_id_res);
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+    uint64_t connection_id_be;
+    memcpy(&connection_id_be, connect_res + 8, 8);
+    // uint64_t connection_id_host = be64toh(connection_id_be);
+
+    // send scrape request
+    uint8_t scrape[16 + 20];
+    action = htonl(2);
+    uint32_t scrape_trans_id = rand();
+    uint32_t scrape_trans_id_be = htonl(scrape_trans_id);
+    memcpy(scrape, &connection_id_be, 8);
+    memcpy(scrape + 8, &action, 4);
+    memcpy(scrape + 12, &scrape_trans_id_be, 4);
+    memcpy(scrape + 16, info_hash, 20);
+
+    if (sendto(sock, scrape, 16 + 20, 0, res->ai_addr, res->ai_addrlen) < 0) {
+        perror("Sending scrape request failed");
+        close(sock);
+        freeaddrinfo(res);
+        return -1;
+    }
+
+    // receive scrape response
+    uint8_t resp[16 + 12];
+    if (recvfrom(sock, resp, 16 + 12, 0, NULL, NULL) < 8) {
+        perror("Receiving scrape response failed");
+        close(sock);
+        freeaddrinfo(res);
+        return -1;
+    }
+    
+    action_res = ntohl(*(uint32_t*)(resp));
+    transaction_id_res = ntohl(*(uint32_t*)(resp + 4));
+    if (action_res != 2 || transaction_id_res != scrape_trans_id) {
+        fprintf(stderr, "Scrape response failed (action=%u tx=%u)\n", action_res, transaction_id_res);
+        close(sock);
+        freeaddrinfo(res);
+        return -1;
+    }
+
+    uint32_t complete = ntohl(*(uint32_t*)(resp + 8));
+    uint32_t incomplete  = ntohl(*(uint32_t*)(resp + 16));
+
+    response->complete = complete;
+    response->incomplete = incomplete;
+    close(sock);
+    freeaddrinfo(res);
+    return 0;
+}
+
+int scrape(TrackerResponse *response, char *announce, unsigned char *info_hash) {
+    struct url_parts parts = {0};
+    parse_announce(announce, &parts);
+
+    if (strcmp(parts.protocol, "udp") == 0) {
+        return udp_scrape(response, &parts, info_hash);
+    } else {
+        return http_scrape(response, &parts, info_hash);
+    }
 }
 
 void free_tracker_response(TrackerResponse *response) {
