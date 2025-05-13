@@ -56,7 +56,7 @@ int *get_num_peers(void) {
 
 // Prints progress bar (progress must be between 0 and 1)
 static void print_progress_bar(double progress) {
-    int bar_width = 80;
+    int bar_width = 150;
 
     if (progress < 0) progress = 0;
     if (progress > 1) progress = 1;
