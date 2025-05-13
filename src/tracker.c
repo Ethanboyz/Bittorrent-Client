@@ -407,12 +407,15 @@ TrackerResponse udp_get(struct url_parts *parts, unsigned char *info_hash, unsig
         freeaddrinfo(res);
         exit(1);
     }
-    uint64_t connection_id_be = (uint64_t) (connect_res + 8);
-    uint64_t connection_id_host = be64toh(connection_id_be);
+    uint64_t connection_id_be;
+    memcpy(&connection_id_be, connect_res + 8, 8);    
+    // uint64_t connection_id_host = be64toh(connection_id_be);
 
     // send announce request
     uint8_t announce[98];
     action = htonl(1);
+    uint32_t trans_ann = rand();
+    uint32_t trans_ann_be = htonl(trans_ann);
     uint64_t downloaded_be = htobe64((uint64_t) downloaded);
     uint64_t left_be = htobe64((uint64_t) left);
     uint64_t uploaded_be = htobe64((uint64_t) uploaded);
@@ -423,7 +426,7 @@ TrackerResponse udp_get(struct url_parts *parts, unsigned char *info_hash, unsig
     uint16_t port_be = htons((uint16_t) port);
     memcpy(announce, &connection_id_be, 8);
     memcpy(announce + 8, &action, 4);
-    memcpy(announce + 4, &transaction_id_be, 4);
+    memcpy(announce + 12, &trans_ann_be, 4);
     memcpy(announce + 16, info_hash, 20);
     memcpy(announce + 36, peer_id, 20);
     memcpy(announce + 56, &downloaded_be, 8);
@@ -456,7 +459,7 @@ TrackerResponse udp_get(struct url_parts *parts, unsigned char *info_hash, unsig
     TrackerResponse resp = {0};
     uint32_t action_ann = ntohl(*(uint32_t*)(announce_res));
     uint32_t trans_id_ann = ntohl(*(uint32_t*)(announce_res + 4));
-    if (action_ann != 1 || trans_id_ann != transaction_id) {
+    if (action_ann != 1 || trans_id_ann != trans_ann) {
         fprintf(stderr, "Announce request failed (action=%d, transaction ID=%d)\n", 
             action_res, trans_id_ann);
         close(sock);
@@ -474,6 +477,7 @@ TrackerResponse udp_get(struct url_parts *parts, unsigned char *info_hash, unsig
     int peers_len = bytes_read - 20;
     int num_peers = peers_len / 6;
     resp.num_peers = num_peers;
+    resp.peers = calloc(num_peers, sizeof(Peer));
     for (int i = 0; i < num_peers; i++) {
         uint32_t peer_addr = *(uint32_t*)(announce_res + 20 + i * 6);
         uint16_t peer_port  = *(uint16_t*)(announce_res + 24 + i * 6);
@@ -492,10 +496,8 @@ TrackerResponse tracker_get(char *announce, unsigned char *info_hash, unsigned c
     parse_announce(announce, &parts);
 
     if (strcmp(parts.protocol, "udp") == 0) {
-        printf("reaching 488\n");
         return udp_get(&parts, info_hash, peer_id, port, uploaded, downloaded, left);
     } else {
-        printf("reaching 490\n");
         return http_get(&parts, info_hash, peer_id, port, uploaded, downloaded, left);
     }
 }
