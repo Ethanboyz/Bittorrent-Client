@@ -449,7 +449,7 @@ int main(int argc, char *argv[]) {
                         }
                         if (peer_has_this_piece) {
                             if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Peer_idx %d has pieces we need. Sending INTERESTED.\n", peer_log_idx); fflush(stderr); }
-                            // peer_manager_send_interested(current_peer); // This should set current_peer->is_interesting = true
+                            peer_manager_send_interested(current_peer); // This should set current_peer->is_interesting = true
                             break; 
                         }
                     }

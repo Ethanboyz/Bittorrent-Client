@@ -294,14 +294,6 @@ static int parse_peer_incoming_buffer(Peer *peer) {
     size_t offset = 0;                                          // For keeping track of what was processed
     size_t available_bytes = peer->incoming_buffer_offset;      // How many bytes are left
 
-    /* ======= FOR DEBUG ONLY ======== */
-    for (int i = offset; i < available_bytes; i++) {
-        printf("%02x ", (unsigned char)peer->incoming_buffer[i]);
-    }
-    /* ======= FOR DEBUG ONLY ======== */
-
-    printf("\n");
-
     // Check if message is possibly a handshake
     if (peer->handshake_done == false) {
         char protocol[19];
@@ -336,12 +328,6 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             return -1;
         }
     }
-
-    /* ======= FOR DEBUG ONLY ======== */
-    for (int i = offset; i < available_bytes; i++) {
-        printf("%02x ", (unsigned char)peer->incoming_buffer[i]);
-    }
-    /* ======= FOR DEBUG ONLY ======== */
 
     while (available_bytes >= 4) {
         uint32_t length_prefix;
