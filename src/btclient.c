@@ -203,6 +203,16 @@ int main(int argc, char *argv[]) {
         fflush(stderr);
     }
 
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Starting client listener on port %d...\n", args.port); fflush(stderr); }
+    if (client_listen(args.port) != 0) {
+        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to start listening on port %d.\n", args.port); fflush(stderr);
+        // piece_manager_destroy(); // Already called if client_listen fails and calls exit
+        // torrent_free(current_torrent);
+        exit(1); // client_listen will exit on critical failure, this is redundant if so.
+                 // but if it returns -1 without exiting, this handles it.
+    }
+    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Client listener started.\n"); fflush(stderr); }
+
     const char *output_filename = current_torrent->info.name ? current_torrent->info.name : "downloaded_file";
     if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Initializing piece manager for output file: %s\n", output_filename); fflush(stderr); }
     if (piece_manager_init(current_torrent, output_filename) != 0) {
@@ -237,16 +247,6 @@ int main(int argc, char *argv[]) {
 
     free_tracker_response(&response);
     if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Freed tracker response data.\n"); fflush(stderr); }
-
-    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Starting client listener on port %d...\n", args.port); fflush(stderr); }
-    if (client_listen(args.port) != 0) {
-        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to start listening on port %d.\n", args.port); fflush(stderr);
-        // piece_manager_destroy(); // Already called if client_listen fails and calls exit
-        // torrent_free(current_torrent);
-        exit(1); // client_listen will exit on critical failure, this is redundant if so.
-                 // but if it returns -1 without exiting, this handles it.
-    }
-    if (get_args().debug_mode) { fprintf(stderr, "[BTCLIENT_MAIN]: Client listener started.\n"); fflush(stderr); }
 
     if (get_args().debug_mode) {
         fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Entering main poll loop. Initial num_fds: %d, num_peers: %d\n", *get_num_fds(), *get_num_peers());
