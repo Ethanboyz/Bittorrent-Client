@@ -479,10 +479,14 @@ TrackerResponse udp_get(struct url_parts *parts, unsigned char *info_hash, unsig
     resp.num_peers = num_peers;
     resp.peers = calloc(num_peers, sizeof(Peer));
     for (int i = 0; i < num_peers; i++) {
-        uint32_t peer_addr = *(uint32_t*)(announce_res + 20 + i * 6);
-        uint16_t peer_port  = *(uint16_t*)(announce_res + 24 + i * 6);
-        resp.peers[i].address = peer_addr;
-        resp.peers[i].port = peer_port;
+        int offset = 20 + i * 6;
+        uint32_t peer_addr;
+        uint16_t peer_port;
+        memcpy(&peer_addr, announce_res + offset, 4);
+        memcpy(&peer_port, announce_res + offset + 4, 2);
+
+        resp.peers[i].address = ntohl(peer_addr);
+        resp.peers[i].port = ntohs(peer_port);
     }
 
     close(sock);
