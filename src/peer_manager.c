@@ -567,6 +567,8 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
             if (new_sock == -1) {
                 return -1;
             }
+        } else {
+            return 0;
         }
     } else {
         if (connect(new_sock, (struct sockaddr *)addr, addr_len) == -1) {
