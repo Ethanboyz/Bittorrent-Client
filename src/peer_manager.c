@@ -315,6 +315,7 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             offset += 68;
             available_bytes -= 68;
             peer->handshake_done = true;
+            return 0;
         } else {
             if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Expected a handshake message, but got something else. Peer marked for removal\n"); fflush(stderr);}
             return -1;
@@ -341,7 +342,9 @@ static int parse_peer_incoming_buffer(Peer *peer) {
         uint8_t msg_id = peer->incoming_buffer[offset + 4];
         unsigned char *payload = peer->incoming_buffer + offset + 5;
         size_t payload_length = length_prefix - 1;
+        if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: Begin\n"); fflush(stderr);}
         handle_peer_message(peer, msg_id, payload, payload_length);
+        if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: End\n"); fflush(stderr);}
 
         size_t full_message_length = 4 + length_prefix;
         offset += full_message_length;
@@ -591,7 +594,7 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
             0
         };
 
-        int connect_attempt = poll(&connect_fd, 1, 1000);       // Timeout for connect to be 1 second
+        int connect_attempt = poll(&connect_fd, 1, 100);       // Timeout for connect to be 100 milliseconds
         if (connect_attempt == -1) {
             if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s (poll error)\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
             close(new_sock);
