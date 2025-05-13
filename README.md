@@ -15,8 +15,8 @@ Example executable
 
 ## Logs (may or may not be maintained...)
 
-- 5/12: when adding new peers, connect attempts can now timeout. This gives flexibility for the client to connect only to peers it can actually connect to, instead of forcing it to attempt to connect to the entire swarm. Code now runs up until the main loop, where after removing a peer, it segfaults somewhere.
-- 5/12: completed implementation to handle incoming piece messages
+- 5/12: when adding new peers, connect attempts can now timeout. This gives flexibility for the client to connect only to peers it can actually connect to, instead of forcing it to attempt to connect to the entire swarm. Code now runs up until the main loop, where after removing a peer, it segfaults somewhere (Ethan)
+- 5/12: completed implementation to handle incoming piece messages (Ethan)
 - 5/12: Tracker scrape convention implemented for HTTP and HTTPS (Priya)
 - 5/11: tried to create a "cohesive-ized" btclient executable that starts to idealize how we want components to talk to each other -- I think this should be area of debugging so we know which components need their logic rechecked.
 - 5/11: implemented ethans basic todos in peer manager. think we need to start thinking about what algorithims we want to incorporate since functions depend on those. (Jalal)
