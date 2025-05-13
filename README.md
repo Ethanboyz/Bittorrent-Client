@@ -15,6 +15,7 @@ Example executable
 
 ## Logs (may or may not be maintained...)
 
+- 5/13: our first working commit. I will conduct more tests but as of now, flatland-http.torrent works. There are still things to work out, like each piece being received twice and things to test like downloading from multiple peers. (Ethan)
 - 5/12: when adding new peers, connect attempts can now timeout. This gives flexibility for the client to connect only to peers it can actually connect to, instead of forcing it to attempt to connect to the entire swarm. Code now runs up until the main loop, where after removing a peer, it segfaults somewhere (Ethan)
 - 5/12: completed implementation to handle incoming piece messages (Ethan)
 - 5/12: Tracker scrape convention implemented for HTTP and HTTPS (Priya)
