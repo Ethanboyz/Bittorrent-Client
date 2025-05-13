@@ -14,10 +14,14 @@ typedef struct {
 } TrackerResponse;
 
 // send HTTP or HTTPS GET request
-TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char *peer_id, 
+// TrackerResponse http_get(struct url_parts *parts, unsigned char *info_hash, unsigned char *peer_id, 
+//     int port, long uploaded, long downloaded, long left);
+
+TrackerResponse tracker_get(char *announce, unsigned char *info_hash, unsigned char *peer_id, 
     int port, long uploaded, long downloaded, long left);
 
 // send HTTP or HTTPS GET request for scrape
+// returns -1 if scrape is not supported for this tracker, 0 on success
 int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_hash);
 
 // free list of peers

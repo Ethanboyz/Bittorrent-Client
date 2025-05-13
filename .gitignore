@@ -11,3 +11,4 @@ btclient
 
 debug.log
 .vscode
+.DS_Store

@@ -6,6 +6,7 @@
 #include <netdb.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <endian.h>
 
 #include "tracker.h"
 #include "bencode.h"
@@ -52,8 +53,8 @@ void parse_announce(char *announce, struct url_parts *parts) {
         strcpy(parts->port, "443");
         pos = announce + 8;
     } else if (strncmp(announce, "udp://", 6) == 0) {
+        // set a default UDP port??
         strcpy(parts->protocol, "udp");
-        // TODO: UDP tracker support 
         pos = announce + 6;
     }
 
@@ -138,6 +139,8 @@ TrackerResponse parse_response(char *buf, size_t buf_len) {
             break;
         }
     }
+    printf("data is %s\n", data);
+
     size_t data_len = buf_len - (data - buf);
 
     // handle case where response is chunked
@@ -233,31 +236,33 @@ TrackerResponse parse_response(char *buf, size_t buf_len) {
             }
         }
     }
+    printf("interval is %d\n", response.interval);
+    printf("incomplete is %d\n", response.incomplete);
+    printf("complete is %d\n", response.complete);
+    printf("number peers is %d\n", response.num_peers);
+
     free(dechunked);
     return response;
 }
 
 // send HTTP or HTTPS GET request
-TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char *peer_id, 
+TrackerResponse http_get(struct url_parts *parts, unsigned char *info_hash, unsigned char *peer_id, 
         int port, long uploaded, long downloaded, long left) {
     char *encoded_hash = encode_bin_data(info_hash, 20);
     char *encoded_id = encode_bin_data(peer_id, 20);
-    
-    struct url_parts parts = {0};
-    parse_announce(announce, &parts);
 
     // set parameters for request
     char params[1024];
     snprintf(params, sizeof(params), 
         "%s?info_hash=%s&peer_id=%s&port=%d&uploaded=%ld&downloaded=%ld&left=%ld&compact=1",
-        parts.path, encoded_hash, encoded_id, port, uploaded, downloaded, left);
+        parts->path, encoded_hash, encoded_id, port, uploaded, downloaded, left);
 
     free(encoded_hash);
     free(encoded_id);
 
     struct addrinfo hints = {0}, *res;
     hints.ai_socktype = SOCK_STREAM;
-    getaddrinfo(parts.host, parts.port, &hints, &res);
+    getaddrinfo(parts->host, parts->port, &hints, &res);
 
     // create a socket and connect to tracker 
     int sock = socket(res->ai_family, SOCK_STREAM, res->ai_protocol);
@@ -277,7 +282,7 @@ TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char
     // support for HTTPS tracker
     SSL_CTX *ctx = NULL;
     SSL *ssl = NULL;
-    if (strcmp(parts.protocol, "https") == 0) {
+    if (strcmp(parts->protocol, "https") == 0) {
         SSL_library_init();
         OpenSSL_add_all_algorithms();
         SSL_load_error_strings();
@@ -285,8 +290,8 @@ TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char
         ctx = SSL_CTX_new(TLS_client_method());
         ssl = SSL_new(ctx);
         SSL_set_fd(ssl, sock);
-        if (!SSL_set_tlsext_host_name(ssl, parts.host)) {
-            fprintf(stderr, "Failed to set SNI to %s\n", parts.host);
+        if (!SSL_set_tlsext_host_name(ssl, parts->host)) {
+            fprintf(stderr, "Failed to set SNI to %s\n", parts->host);
             SSL_free(ssl);
             SSL_CTX_free(ctx);
             close(sock);
@@ -308,7 +313,7 @@ TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char
         "GET %s HTTP/1.1\r\n"
         "Host: %s\r\n"
         "Connection: close\r\n\r\n",
-        params, parts.host);
+        params, parts->host);
 
     if (ssl) {
         SSL_write(ssl, req, num);
@@ -348,6 +353,151 @@ TrackerResponse http_get(char *announce, unsigned char *info_hash, unsigned char
     TrackerResponse resp = parse_response(res_buf, len);
     free(res_buf);
     return resp;
+}
+
+// TODO: set timeouts according to official protocol
+TrackerResponse udp_get(struct url_parts *parts, unsigned char *info_hash, unsigned char *peer_id, 
+        int port, long uploaded, long downloaded, long left) {
+    
+    struct addrinfo hints = {0}, *res;
+    hints.ai_socktype = SOCK_DGRAM;
+    getaddrinfo(parts->host, parts->port, &hints, &res);
+
+    // create a socket and connect to tracker 
+    int sock = socket(res->ai_family, SOCK_DGRAM, res->ai_protocol);
+    if (sock == -1) {
+        perror("Socket creation failed");
+        freeaddrinfo(res);
+        exit(1);
+    }
+
+    // send connect request
+    uint8_t connect[16];
+    uint64_t protocol_id = htobe64(0x41727101980);
+    uint32_t action = htonl(0);
+    uint32_t transaction_id = (uint32_t)rand();
+    uint32_t transaction_id_be = htonl(transaction_id);
+    memcpy(connect, &protocol_id, 8);
+    memcpy(connect + 8, &action, 4);
+    memcpy(connect + 12, &transaction_id_be, 4);
+
+    if (sendto(sock, connect, 16, 0, res->ai_addr, res->ai_addrlen) != 16) {
+        perror("Sending connect request failed");
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+
+    // receive connect response
+    uint8_t connect_res[16];
+    socklen_t addrlen = res->ai_addrlen;
+    if (recvfrom(sock, connect_res, sizeof(connect_res), 0, res->ai_addr, &addrlen) < 16) {
+        perror("Receiving connect request failed");
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+
+    uint32_t action_res = ntohl(*(uint32_t*)(connect_res));
+    uint32_t transaction_id_res = ntohl(*(uint32_t*)(connect_res + 4));
+    if (action_res != 0 || transaction_id_res != transaction_id) {
+        fprintf(stderr, "Connect request failed (action=%d, transaction ID=%d)\n", 
+            action_res, transaction_id_res);
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+    uint64_t connection_id_be = (uint64_t) (connect_res + 8);
+    uint64_t connection_id_host = be64toh(connection_id_be);
+
+    // send announce request
+    uint8_t announce[98];
+    action = htonl(1);
+    uint64_t downloaded_be = htobe64((uint64_t) downloaded);
+    uint64_t left_be = htobe64((uint64_t) left);
+    uint64_t uploaded_be = htobe64((uint64_t) uploaded);
+    uint32_t event = htonl(0);
+    uint32_t ip_addr = htonl(0);
+    uint32_t key = htonl((uint32_t) rand());
+    uint32_t num_want = htonl(-1);
+    uint16_t port_be = htons((uint16_t) port);
+    memcpy(announce, &connection_id_be, 8);
+    memcpy(announce + 8, &action, 4);
+    memcpy(announce + 4, &transaction_id_be, 4);
+    memcpy(announce + 16, info_hash, 20);
+    memcpy(announce + 36, peer_id, 20);
+    memcpy(announce + 56, &downloaded_be, 8);
+    memcpy(announce + 64, &left_be, 8);
+    memcpy(announce + 72, &uploaded_be, 8);
+    memcpy(announce + 80, &event, 4);
+    memcpy(announce + 84, &ip_addr, 4);
+    memcpy(announce + 88, &key, 4);
+    memcpy(announce + 92, &num_want, 4);
+    memcpy(announce + 96, &port_be, 2);
+
+    if (sendto(sock, announce, 98, 0, res->ai_addr, res->ai_addrlen) < 0) {
+        perror("Sending announce request failed");
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+
+    // receive announce response
+    uint8_t announce_res[1600];     // is buffer size okay??
+    int bytes_read = recvfrom(sock, announce_res, sizeof(announce_res), 0, NULL, NULL);
+    if (bytes_read < 20) {
+        perror("Receiving announce request failed");
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+
+    // populate tracker response struct
+    TrackerResponse resp = {0};
+    uint32_t action_ann = ntohl(*(uint32_t*)(announce_res));
+    uint32_t trans_id_ann = ntohl(*(uint32_t*)(announce_res + 4));
+    if (action_ann != 1 || trans_id_ann != transaction_id) {
+        fprintf(stderr, "Announce request failed (action=%d, transaction ID=%d)\n", 
+            action_res, trans_id_ann);
+        close(sock);
+        freeaddrinfo(res);
+        exit(1);
+    }
+    uint32_t interval = ntohl(*(uint32_t*)(announce_res + 8));
+    uint32_t incomplete = ntohl(*(uint32_t*)(announce_res + 12));
+    uint32_t complete = ntohl(*(uint32_t*)(announce_res + 16));
+
+    resp.interval = interval;
+    resp.incomplete = incomplete;
+    resp.complete = complete;
+
+    int peers_len = bytes_read - 20;
+    int num_peers = peers_len / 6;
+    resp.num_peers = num_peers;
+    for (int i = 0; i < num_peers; i++) {
+        uint32_t peer_addr = *(uint32_t*)(announce_res + 20 + i * 6);
+        uint16_t peer_port  = *(uint16_t*)(announce_res + 24 + i * 6);
+        resp.peers[i].address = peer_addr;
+        resp.peers[i].port = peer_port;
+    }
+
+    close(sock);
+    freeaddrinfo(res);
+    return resp;
+}
+
+TrackerResponse tracker_get(char *announce, unsigned char *info_hash, unsigned char *peer_id, 
+        int port, long uploaded, long downloaded, long left) {
+    struct url_parts parts = {0};
+    parse_announce(announce, &parts);
+
+    if (strcmp(parts.protocol, "udp") == 0) {
+        printf("reaching 488\n");
+        return udp_get(&parts, info_hash, peer_id, port, uploaded, downloaded, left);
+    } else {
+        printf("reaching 490\n");
+        return http_get(&parts, info_hash, peer_id, port, uploaded, downloaded, left);
+    }
 }
 
 void parse_scrape_response(TrackerResponse *response, char *buf, size_t buf_len) {
@@ -409,7 +559,6 @@ void parse_scrape_response(TrackerResponse *response, char *buf, size_t buf_len)
 }
 
 // tracker scrape convention for HTTP(S)
-// returns 0 if scrape is not supported for this tracker 
 int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_hash) {
     struct url_parts parts = {0};
     parse_announce(announce, &parts);
@@ -419,7 +568,7 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
     char *to_replace = strstr(scrape_path, "announce");
     // scrape convention is not supported 
     if (!to_replace) {
-        return 0;
+        return -1;
     }
 
     memmove(to_replace + strlen("scrape"), to_replace + 8, strlen(to_replace + 8) + 1);
@@ -440,13 +589,13 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
     if (sock == -1) {
         perror("Socket creation failed");
         freeaddrinfo(res);
-        return 0;
+        return -1;
     }
     if (connect(sock, res->ai_addr, res->ai_addrlen) < 0) {
         close(sock);
         perror("Connection failed");
         freeaddrinfo(res);
-        return 0;
+        return -1;
     }
     freeaddrinfo(res);
 
@@ -466,7 +615,7 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
             SSL_free(ssl);
             SSL_CTX_free(ctx);
             close(sock);
-            return 0;
+            return -1;
         }
         if (SSL_connect(ssl) <= 0) {
             unsigned long err = ERR_get_error();                           
@@ -474,7 +623,7 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
             SSL_free(ssl);
             SSL_CTX_free(ctx);
             close(sock);
-            return 0;
+            return -1;
         }
     }
 
@@ -524,7 +673,7 @@ int http_scrape(TrackerResponse *response, char *announce, unsigned char *info_h
     // parse response here 
     parse_scrape_response(response, res_buf, len);
     free(res_buf);
-    return 1;
+    return 0;
 }
 
 void free_tracker_response(TrackerResponse *response) {
@@ -533,5 +682,3 @@ void free_tracker_response(TrackerResponse *response) {
     }
     memset(response, 0, sizeof(*response));
 }
-
-// TODO: UDP support

@@ -57,6 +57,7 @@ communication to get list of peers (still needs to be implemented) (Priya)
 
 ## Resources
 
-- BitTorrent Protocol: https://wiki.theory.org/BitTorrentSpecification  
+- BitTorrent Protocol: https://wiki.theory.org/BitTorrentSpecification 
+- UDP tracker support: https://www.bittorrent.org/beps/bep_0015.html  
 
 
