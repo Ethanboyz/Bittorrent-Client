@@ -298,7 +298,7 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             return -1;
         }
         memcpy(protocol, peer->incoming_buffer + offset + 1, 19);   // Consume the pstr
-        if (strncmp(protocol, PROTOCOL, 19) == 0) {         // Confirm it's actually a handshake
+        if (strncmp(protocol, PROTOCOL, 19) == 0) {                 // Confirm it's actually a handshake
             // Consume the info_hash
             if (memcmp(peer->incoming_buffer + 28, torrent_get_info_hash(&peer->torrent), 20)) {
                 if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: We aren't serving this received info_hash! Peer marked for removal\n"); fflush(stderr);}
@@ -315,7 +315,6 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             offset += 68;
             available_bytes -= 68;
             peer->handshake_done = true;
-            return 0;
         } else {
             if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Expected a handshake message, but got something else. Peer marked for removal\n"); fflush(stderr);}
             return -1;
@@ -342,9 +341,8 @@ static int parse_peer_incoming_buffer(Peer *peer) {
         uint8_t msg_id = peer->incoming_buffer[offset + 4];
         unsigned char *payload = peer->incoming_buffer + offset + 5;
         size_t payload_length = length_prefix - 1;
-        if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: Begin\n"); fflush(stderr);}
+        if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: Handle message with msg_id %d, length %d\n", msg_id, payload_length); fflush(stderr);}
         handle_peer_message(peer, msg_id, payload, payload_length);
-        if (get_args().debug_mode) {fprintf(stderr, "[DEBUG]: End\n"); fflush(stderr);}
 
         size_t full_message_length = 4 + length_prefix;
         offset += full_message_length;
