@@ -12,3 +12,4 @@ btclient
 debug.log
 .vscode
 *.iso
+.DS_Store

@@ -243,7 +243,7 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
     snprintf((char*)client_peer_id, sizeof(client_peer_id), "-PC0123-%011ld", rand() % 100000000000L);
 
-    TrackerResponse response = http_get(current_torrent->announce, current_torrent->info_hash, client_peer_id, args.port, 0, 0, total_len);
+    TrackerResponse response = tracker_get(current_torrent->announce, current_torrent->info_hash, client_peer_id, args.port, 0, 0, total_len);
     if (get_args().debug_mode) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Tracker Response -> Interval: %d, Complete: %d, Incomplete: %d, Num Peers: %d\n",
                 response.interval, response.complete, response.incomplete, response.num_peers);
