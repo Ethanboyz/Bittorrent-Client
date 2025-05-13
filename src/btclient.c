@@ -16,6 +16,15 @@
 #include "tracker.h"
 #include "piece_manager.h"
 
+// Useful ANSI codes (source: https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797)
+#define CLEAR_SCREEN "\033[2J\033[H"    // Erase screen, move cursor to home position (0, 0)
+#define UNDERLINE "\x1b[4;58;5;15m"              // Underline text
+#define RESET_UNDERLINE "\x1b[0m"       // Cancel underlining of texts
+#define RESET_TEXT "\x1b[39m"           // Set text to default color (white)
+#define GREEN_TEXT "\x1b[32m"           // Set text to green
+#define BLUE_TEXT "\x1b[34m"            // Set text to blue
+#define CYAN_TEXT "\x1b[36m"            // Set text to cyan
+
 static Peer peers[MAX_PEERS];
 static struct pollfd fds[MAX_PEERS + 1];
 static int num_fds;
@@ -43,6 +52,28 @@ Peer *get_peers(void) {
 
 int *get_num_peers(void) {
     return &num_peers;
+}
+
+// Prints progress bar (progress must be between 0 and 1)
+static void print_progress_bar(double progress) {
+    int bar_width = 180;
+
+    if (progress < 0) progress = 0;
+    if (progress > 1) progress = 1;
+    int offset = bar_width * progress;
+
+    printf("|");
+    for (int i = 0; i < bar_width; ++i) {
+        if (i < offset) {
+            printf("%s%s█%s%s", UNDERLINE, BLUE_TEXT, RESET_UNDERLINE, RESET_TEXT);
+        } else if (i == offset) {
+            printf("%s%s▒%s%s", UNDERLINE, BLUE_TEXT, RESET_UNDERLINE, RESET_TEXT);
+        } else {
+            printf("%s%s░%s%s", UNDERLINE, BLUE_TEXT, RESET_UNDERLINE, RESET_TEXT);
+        }
+    }
+    printf("| %.2f%%\r", progress * 100.0);
+    fflush(stdout);
 }
 
 int client_listen(int port) {
@@ -145,6 +176,7 @@ int client_listen(int port) {
 }
 
 int main(int argc, char *argv[]) {
+    printf(CLEAR_SCREEN);        // Clear the terminal screen for torrent info and progress bar
     args = arg_parseopt(argc, argv);
 
     if (args.debug_mode) {
@@ -180,12 +212,15 @@ int main(int argc, char *argv[]) {
     }
 
     // current_torrent is Torrent*
+    printf(GREEN_TEXT);
     if (parse_torrent_file(buffer, bytes_read, &current_torrent) != 0 || !current_torrent) {
+        printf(RESET_TEXT);
         fprintf(stderr, "[BTCLIENT_MAIN]: Error: Could not parse torrent file '%s'.\n", filename); 
         fflush(stderr);
         free(buffer);
         exit(1);
     }
+    printf(RESET_TEXT);
     // TODO: delete unnecessary print statements later
     // torrent_parser.c's printf output to stdout happens inside parse_torrent_file
     if (get_args().debug_mode) {
@@ -280,7 +315,10 @@ int main(int argc, char *argv[]) {
         fflush(stderr);
     }
 
-    // infinte loop
+    printf("\n%s DOWNLOAD PROGRESS%s\n", BLUE_TEXT, RESET_TEXT);
+    print_progress_bar(total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() / total_len : 0.0);
+
+    // infinite loop
     while (1) {
         if (get_args().debug_mode && (*get_num_fds() > 1 || *get_num_peers() > 0) ) {
              fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Polling %d FDs. Active Peers: %d. Downloaded: %lu / %ld (%.2f%%)\n",
@@ -391,6 +429,7 @@ int main(int argc, char *argv[]) {
                     peer_manager_remove_peer(current_peer);
                     continue;
                 }
+                print_progress_bar(total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() / total_len : 0.0);
             }
             
             // Re-fetch current_peer pointer in case peer_manager_remove_peer was called by handlers above for a *different* peer, changing array
@@ -463,7 +502,9 @@ int main(int argc, char *argv[]) {
             fflush(stderr);
             break;
         }
-    } 
+    }
+
+    printf("\n");           // Exit progress bar
 
     if (get_args().debug_mode) { 
         fprintf(stderr, "[BTCLIENT_MAIN]: Exited main poll loop.\n"); fflush(stderr); 
