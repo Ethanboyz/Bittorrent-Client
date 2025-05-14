@@ -18,14 +18,12 @@
 
 // Useful ANSI codes (source: https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797)
 #define CLEAR_SCREEN "\033[2J\033[H"    // Erase screen, move cursor to home position (0, 0)
-#define UNDERLINE "\x1b[4;58;5;15m"              // Underline text
+#define UNDERLINE "\x1b[4;58;5;15m"     // Underline text
 #define RESET_UNDERLINE "\x1b[0m"       // Cancel underlining of texts
 #define RESET_TEXT "\x1b[39m"           // Set text to default color (white)
 #define GREEN_TEXT "\x1b[32m"           // Set text to green
 #define BLUE_TEXT "\x1b[34m"            // Set text to blue
 #define CYAN_TEXT "\x1b[36m"            // Set text to cyan
-
-#define DEFAULT_TRACKER_INTERVAL_SECONDS 180 // Re-query tracker every 3 minutes by default
 
 static Peer peers[MAX_PEERS];
 static struct pollfd fds[MAX_PEERS + 1];
@@ -38,7 +36,7 @@ static unsigned char client_peer_id[20];
 
 // Tracker refresh state
 static time_t last_tracker_request_time;
-static int tracker_interval_seconds = DEFAULT_TRACKER_INTERVAL_SECONDS;
+static int tracker_interval_seconds;
 
 struct run_arguments get_args(void) { 
     return args; 
@@ -134,7 +132,8 @@ int client_listen(int port) {
         }
     } else {
         if (get_args().debug_mode) { 
-            fprintf(stderr, "[BTCLIENT_LISTEN]: setsockopt SO_REUSEADDR set.\n"); fflush(stderr); 
+            fprintf(stderr, "[BTCLIENT_LISTEN]: setsockopt SO_REUSEADDR set.\n"); 
+            fflush(stderr); 
         }
     }
     if (setsockopt(listen_sock, IPPROTO_TCP, TCP_NODELAY, &toggle, sizeof(toggle)) == -1) {
@@ -184,13 +183,11 @@ int client_listen(int port) {
 // MODIFIED: connect_peers function
 void connect_peers(int num_peers_to_connect, TrackerResponse response_arg) {
     if (num_peers_to_connect > 0) {
-        // MODIFIED: Logging message slightly for clarity
         if (get_args().debug_mode) {
             fprintf(stderr, "[BTCLIENT_CONNECT_PEERS]: Attempting to connect to %d peers from tracker list...\n", num_peers_to_connect);
             fflush(stderr);
         }
         for (int i = 0; i < num_peers_to_connect; i++) {
-            // ADDED: Check against MAX_PEERS
             if (*get_num_peers() >= MAX_PEERS) {
                 if (get_args().debug_mode) {
                     fprintf(stderr, "[BTCLIENT_CONNECT_PEERS]: Reached MAX_PEERS limit (%d), not attempting more connections from this tracker list.\n", MAX_PEERS);
@@ -208,7 +205,6 @@ void connect_peers(int num_peers_to_connect, TrackerResponse response_arg) {
             char peer_ip_log_str[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &(peer_addr_sa.sin_addr), peer_ip_log_str, INET_ADDRSTRLEN);
             if (get_args().debug_mode) {
-                // MODIFIED: Logging message slightly for clarity
                 fprintf(stderr, "[BTCLIENT_CONNECT_PEERS]: Attempting to add peer %s:%d\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port));
                 fflush(stderr);
             }
@@ -216,14 +212,12 @@ void connect_peers(int num_peers_to_connect, TrackerResponse response_arg) {
             int new_sock = peer_manager_add_peer(*current_torrent, &peer_addr_sa, sizeof(peer_addr_sa));
             if (new_sock > 0) {
                 if (get_args().debug_mode) {
-                     // MODIFIED: Logging message slightly for clarity
                     fprintf(stderr, "[BTCLIENT_CONNECT_PEERS]: Initiated connection process for peer %s:%d. Peer socket: %d. Current num_fds: %d, num_peers: %d\n",
                             peer_ip_log_str, ntohs(peer_addr_sa.sin_port), new_sock, *get_num_fds(), *get_num_peers());
                     fflush(stderr);
                 }
             } else {
                 if (get_args().debug_mode) {
-                    // MODIFIED: Logging message slightly for clarity (added sock_fd)
                     fprintf(stderr, "[BTCLIENT_CONNECT_PEERS]: Failed to add peer %s:%d (sock_fd: %d).\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port), new_sock);
                     fflush(stderr);
                 }
@@ -233,7 +227,7 @@ void connect_peers(int num_peers_to_connect, TrackerResponse response_arg) {
 }
 
 int main(int argc, char *argv[]) {
-    printf(CLEAR_SCREEN);        // Clear the terminal screen for torrent info and progress bar
+    printf(CLEAR_SCREEN);        // Clear the terminal screen for progress bar
     args = arg_parseopt(argc, argv);
 
     if (args.debug_mode) {
@@ -253,17 +247,14 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // MODIFIED: Increased buffer size for torrent file slightly, though 1MB is often enough.
-    // Original was 1024 * 1024 * 1024, which is 1GB, likely a typo and too large for a .torrent file.
-    // Assuming it was meant to be smaller, or using a more reasonable size like 10MB.
-    // For this example, I'll use the 10MB I used in previous refined example.
-    char *buffer = malloc(1024 * 1024 * 10); // 10MB buffer for torrent file
+    // TODO: check buffer size allocation
+    char *buffer = malloc(1024 * 1024 * 10); 
     if (!buffer) {
-        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to allocate buffer for torrent file.\n"); fflush(stderr);
+        fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to allocate buffer for torrent file.\n"); 
+        fflush(stderr);
         exit(1);
     }
 
-    // MODIFIED: Max read size matches buffer allocation
     int bytes_read = read_torrent_file(filename, buffer, 1024 * 1024 * 10);
     if (bytes_read <= 0) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Error: Could not read torrent file '%s'. Bytes read: %d\n", filename, bytes_read);
@@ -281,8 +272,8 @@ int main(int argc, char *argv[]) {
         free(buffer);
         exit(1);
     }
+    
     printf(RESET_TEXT);
-    // torrent_parser.c's printf output to stdout happens inside parse_torrent_file
     if (get_args().debug_mode) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Torrent file parsed successfully (by torrent_parser module).\n");
         fflush(stderr);
@@ -299,11 +290,8 @@ int main(int argc, char *argv[]) {
         total_len = current_torrent->info.mode.multi_file.total_length;
     }
 
-    srand(time(NULL)); // Original srand placement
-    // MODIFIED: Changed from snprintf to memcpy for client_peer_id for robust fixed-size ID handling
-    // Original: snprintf((char*)client_peer_id, sizeof(client_peer_id), PEER_ID);
+    // srand(time(NULL));
     memcpy(client_peer_id, PEER_ID, sizeof(client_peer_id));
-
 
     TrackerResponse response = tracker_get(current_torrent->announce, current_torrent->info_hash, client_peer_id, args.port, 0, 0, total_len);
     if (get_args().debug_mode) {
@@ -312,13 +300,8 @@ int main(int argc, char *argv[]) {
         fflush(stderr);
     }
 
-    // ADDED: Initialize tracker refresh timer variables based on first tracker response
     last_tracker_request_time = time(NULL);
-    if (response.interval > 0) {
-        tracker_interval_seconds = response.interval;
-    } else {
-        tracker_interval_seconds = DEFAULT_TRACKER_INTERVAL_SECONDS; // Use default if tracker provides invalid or no interval
-    }
+    tracker_interval_seconds = response.interval;
     if (get_args().debug_mode) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Tracker interval set to %d seconds.\n", tracker_interval_seconds);
         fflush(stderr);
@@ -329,20 +312,19 @@ int main(int argc, char *argv[]) {
     if (client_listen(args.port) != 0) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to start listening on port %d.\n", args.port);
         fflush(stderr);
-        free_tracker_response(&response); // Free tracker response before exiting
+        free_tracker_response(&response);
         torrent_free(current_torrent);
         exit(1);
     }
 
-    // MODIFIED: Ensured output_filename is mutable and has a safe default
     const char *output_filename_base = current_torrent->info.name ? current_torrent->info.name : "downloaded_file";
-    char output_filename[1024]; // Ensure buffer is large enough
+    char output_filename[1024];
     snprintf(output_filename, sizeof(output_filename), "%s", output_filename_base);
 
     if (piece_manager_init(current_torrent, output_filename) != 0) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to initialize piece manager.\n");
         fflush(stderr);
-        free_tracker_response(&response); // Free tracker response before exiting
+        free_tracker_response(&response); 
         torrent_free(current_torrent);
         exit(1);
     }
@@ -357,16 +339,14 @@ int main(int argc, char *argv[]) {
     printf("\n%s DOWNLOAD PROGRESS%s\n", BLUE_TEXT, RESET_TEXT);
     print_progress_bar(total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() / total_len : 0.0);
 
-    // REMOVED (Commented out): Redundant second call to connect_peers
-    // connect_peers(num_peers_from_tracker, response);
     while (1) {
         // MODIFIED: Debug log to include time until next tracker refresh
-        if (get_args().debug_mode && (*get_num_fds() > 1 || *get_num_peers() > 0) ) {
-                 fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Polling %d FDs. Active Peers: %d. Downloaded: %lu / %ld (%.2f%%). Tracker refresh in %ld s.\n",
-                         *get_num_fds(), *get_num_peers(), piece_manager_get_bytes_downloaded_total(), total_len,
-                         total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() * 100.0 / total_len : 0.0,
-                         (last_tracker_request_time + tracker_interval_seconds) - time(NULL) > 0 ? (last_tracker_request_time + tracker_interval_seconds) - time(NULL) : 0);
-                 fflush(stderr);
+        if (get_args().debug_mode && (*get_num_fds() > 1 || *get_num_peers() > 0)) {
+            fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Polling %d FDs. Active Peers: %d. Downloaded: %lu / %ld (%.2f%%). Tracker refresh in %ld s.\n",
+                *get_num_fds(), *get_num_peers(), piece_manager_get_bytes_downloaded_total(), total_len,
+                total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() * 100.0 / total_len : 0.0,
+                (last_tracker_request_time + tracker_interval_seconds) - time(NULL) > 0 ? (last_tracker_request_time + tracker_interval_seconds) - time(NULL) : 0);
+            fflush(stderr);
         }
 
         // ADDED: Periodic tracker re-query logic
@@ -380,7 +360,8 @@ int main(int argc, char *argv[]) {
             long left_for_tracker = piece_manager_get_bytes_left_total();
             long uploaded_for_tracker = 0; // Placeholder, update if upload tracking is added
 
-            TrackerResponse new_tracker_resp = tracker_get(current_torrent->announce, current_torrent->info_hash, client_peer_id, args.port, uploaded_for_tracker, downloaded_for_tracker, left_for_tracker);
+            TrackerResponse new_tracker_resp = tracker_get(current_torrent->announce, 
+                current_torrent->info_hash, client_peer_id, args.port, uploaded_for_tracker, downloaded_for_tracker, left_for_tracker);
 
             if (get_args().debug_mode) {
                 fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: New Tracker Response -> Interval: %d, Complete: %d, Incomplete: %d, Num Peers: %d\n",
@@ -388,11 +369,7 @@ int main(int argc, char *argv[]) {
                 fflush(stderr);
             }
 
-            if (new_tracker_resp.interval > 0) {
-                tracker_interval_seconds = new_tracker_resp.interval;
-            } else {
-                tracker_interval_seconds = DEFAULT_TRACKER_INTERVAL_SECONDS; // Reset to default if invalid
-            }
+            tracker_interval_seconds = new_tracker_resp.interval;
              if (get_args().debug_mode) {
                 fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Next tracker refresh interval set to %d seconds.\n", tracker_interval_seconds);
                 fflush(stderr);
@@ -441,9 +418,9 @@ int main(int argc, char *argv[]) {
                         TrackerResponse temp_connect_arg_response;
                         temp_connect_arg_response.peers = candidate_peers_for_connection;
                         temp_connect_arg_response.num_peers = num_candidate_peers_to_connect;
-                        temp_connect_arg_response.interval = new_tracker_resp.interval; // Not strictly needed by connect_peers
-                        temp_connect_arg_response.complete = new_tracker_resp.complete; // Not strictly needed by connect_peers
-                        temp_connect_arg_response.incomplete = new_tracker_resp.incomplete; // Not strictly needed by connect_peers
+                        temp_connect_arg_response.interval = new_tracker_resp.interval; 
+                        temp_connect_arg_response.complete = new_tracker_resp.complete; 
+                        temp_connect_arg_response.incomplete = new_tracker_resp.incomplete;
                         
                         connect_peers(num_candidate_peers_to_connect, temp_connect_arg_response);
                     }
@@ -455,11 +432,10 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-            free_tracker_response(&new_tracker_resp); // Free the peers list from the new_tracker_resp
+            free_tracker_response(&new_tracker_resp); 
             last_tracker_request_time = time(NULL);
         }
-
-
+        
         int poll_timeout_ms = 1000; // 1 second timeout
         int poll_result = poll(fds, *get_num_fds(), poll_timeout_ms);
 
@@ -496,7 +472,6 @@ int main(int argc, char *argv[]) {
             } else {
                  if (get_args().debug_mode) {
                     fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: MAX_PEERS reached, not accepting new incoming connection for now.\n");
-                    // To clear the listen queue, could accept and immediately close, or rely on backlog.
                     fflush(stderr);
                 }
             }
@@ -516,10 +491,10 @@ int main(int argc, char *argv[]) {
                 continue; // num_fds changed, so re-evaluate loop condition and current fds[i]
             }
 
-            // MODIFIED: Refined POLLOUT handling, primarily for connect() success/failure
+            // MODIFIED: POLLOUT handling for connect() success/failure
             if (fds[i].revents & POLLOUT) {
                 // This 'current_peer_ptr' should be valid as no removal happened on this POLLOUT branch yet.
-                if (!current_peer_ptr->handshake_done) { // Only care about POLLOUT for initial connection success/failure
+                if (!current_peer_ptr->handshake_done) { 
                     int sock_err = 0;
                     socklen_t len = sizeof(sock_err);
                     if (getsockopt(fds[i].fd, SOL_SOCKET, SO_ERROR, &sock_err, &len) == -1 || sock_err != 0) {
@@ -543,13 +518,12 @@ int main(int argc, char *argv[]) {
                         // Now we wait for POLLIN for their handshake.
                     }
                 } else {
-                    // If handshake_done, generally don't need POLLOUT unless implementing non-blocking sends with EWOULDBLOCK handling
                      if (get_args().debug_mode) {
                         fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Socket %d for peer_idx %d writable (POLLOUT), but handshake done. Usually means send buffer is free.\n",
                                 fds[i].fd, peer_log_idx);
                         fflush(stderr);
                     }
-                    fds[i].events &= ~POLLOUT; // Typically, only need POLLOUT for connect() completion
+                    fds[i].events &= ~POLLOUT; 
                 }
             }
 
@@ -634,9 +608,10 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-            i++; // Move to the next fd ONLY if no peer was removed (i.e., no `continue` was hit)
+            i++; // Move to the next fd ONLY if no peer was removed 
         }
 
+        // TODO: for uploads to work we should not be breaking when we're done downloading
         if (piece_manager_is_download_complete()) {
             print_progress_bar(1.0); // Ensure progress bar shows 100%
             printf("\n");
@@ -667,7 +642,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Cleaning up peer connections...\n");
         fflush(stderr);
     }
-    // MODIFIED: Cleanup loop refined for clarity and safety (iterating downwards)
+    // MODIFIED: Cleanup loop 
     for (int i_cleanup = (*get_num_fds()) - 1; i_cleanup >= 1; i_cleanup--) {
          // peers array index is fds index - 1
         if (i_cleanup -1 < *get_num_peers() && i_cleanup -1 >= 0) { // Check if peer exists at this index
@@ -680,8 +655,8 @@ int main(int argc, char *argv[]) {
                         peer_ip_str, ntohs(peer_to_remove->port), fds[i_cleanup].fd, (i_cleanup-1));
                 fflush(stderr);
             }
-            peer_manager_remove_peer(peer_to_remove); // This will close socket and compact arrays
-        } else if (fds[i_cleanup].fd != -1) { // If fd exists but no corresponding peer (should not happen if arrays are synced)
+            peer_manager_remove_peer(peer_to_remove);
+        } else if (fds[i_cleanup].fd != -1) { 
              if (get_args().debug_mode) {
                 fprintf(stderr, "[BTCLIENT_MAIN]: Discrepancy or already closed fd at fds index %d during cleanup. num_peers: %d, fd: %d\n",
                          i_cleanup, *get_num_peers(), fds[i_cleanup].fd);
@@ -722,10 +697,9 @@ int main(int argc, char *argv[]) {
         close(fds[0].fd);
         fds[0].fd = -1;
     }
-    // MODIFIED: Explicitly reset global counts after cleanup for clarity
+    // MODIFIED: reset global counts
     *get_num_fds() = 0;
     *get_num_peers() = 0;
-
 
     if (get_args().debug_mode) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Client shutting down.\n");

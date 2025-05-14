@@ -7,7 +7,6 @@
 #include "torrent_parser.h" // For Torrent struct
 #include "peer_manager.h"   // For Peer's bitfield context (optional here)
 
-
 #define DEFAULT_BLOCK_LENGTH 16384 // 16 KiB, common block request size
 
 // Represents the client's state regarding a piece
@@ -32,7 +31,6 @@ typedef struct {
     // For rarest-first strategy (extra credit)
     int peer_availability_count;  // How many connected peers have this piece
 } ManagedPiece;
-
 
 /**
  * @brief Initialize piece manager with torrent data and output file.

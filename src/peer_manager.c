@@ -40,7 +40,10 @@ static int send_message(Peer *peer, const unsigned char *message, size_t message
         int n = send(peer->sock_fd, message + sent, message_len - sent, 0);
         if (n == -1) {
             if (errno == EINTR) {
-                if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Message did not send due to interruption, trying again...\n"); fflush(stderr);}
+                if (get_args().debug_mode) {
+                    fprintf(stderr, "[PEER_MANAGER]: Message did not send due to interruption, trying again...\n"); 
+                    fflush(stderr);
+                }
                 continue;
             }
             return -1;
@@ -74,12 +77,18 @@ static int send_handshake(Peer *peer) {
     offset += 20;
 
     if (offset != handshake_length) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Something went wrong while constructing handshake\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Something went wrong while constructing handshake\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
     int sent = send_message(peer, message, handshake_length);
-    if (sent == -1 && get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to send handshake\n"); fflush(stderr);}
+    if (sent == -1 && get_args().debug_mode) {
+        fprintf(stderr, "[PEER_MANAGER]: Failed to send handshake\n"); 
+        fflush(stderr);
+    }
 
     return sent;
 }
@@ -101,17 +110,13 @@ static int send_piece(Peer *peer, uint32_t index, uint32_t begin, uint32_t lengt
 
     if (get_args().debug_mode) {
         struct in_addr ia = { .s_addr = peer->address };
-        fprintf(stderr,
-                "[PEER_MANAGER]: Sending PIECE idx=%u begin=%u len=%u to %s\n",
-                index, begin, length,
-                inet_ntoa(ia));
+        fprintf(stderr, "[PEER_MANAGER]: Sending PIECE idx=%u begin=%u len=%u to %s\n",
+            index, begin, length, inet_ntoa(ia));
     }
 
     if (send_message(peer, message, 13 + length) < 0) {
         if (get_args().debug_mode) {
-            fprintf(stderr,
-                    "[PEER_MANAGER]: Failed to send PIECE idx=%u to peer\n",
-                    index);
+            fprintf(stderr, "[PEER_MANAGER]: Failed to send PIECE idx=%u to peer\n", index);
         }
         free(block);
         free(message);
@@ -165,11 +170,11 @@ static void dequeue_and_process_outstanding(Peer *peer, uint32_t piece_index, ui
 static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *payload, size_t payload_length) {
     switch (msg_id) {
         case CHOKE: {
-
-            // MOD: Log the choke message
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received CHOKE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address));  fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received CHOKE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address));  
+                fflush(stderr);
+            }
             peer->choked = true;
-
             // MOD: Cancel any outstanding requests to this peer
             peer->num_outstanding_requests = 0;
             peer->requests_head = 0;
@@ -177,14 +182,19 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             break;
         }
         case UNCHOKE: {
-            // MOD: Log
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received UNCHOKE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received UNCHOKE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
+                fflush(stderr);
+            }
             peer->choked = false;
             break;
         }
         case INTERESTED: {
             // MOD: implement this!
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received INTERESTED from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received INTERESTED from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
+                fflush(stderr);
+            }
             peer->is_interested = true;
             // MOD: According to protocol, we should respond with UNCHOKE if we are choking them.
             // The basic implementation starts with choking=true, so we would UNCHOKE here
@@ -197,7 +207,10 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
         }
         case NOT_INTERESTED: {
             // MOD: implement this!
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received NOT_INTERESTED from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received NOT_INTERESTED from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
+                fflush(stderr);
+            }
             peer->is_interested = false;
             break;
         }
@@ -206,14 +219,20 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             break;
         }
         case BITFIELD: {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received BITFIELD from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received BITFIELD from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
+                fflush(stderr);
+            }
             peer->bitfield = malloc(payload_length);
             memcpy(peer->bitfield, payload, payload_length);
             peer->bitfield_bytes = payload_length;
             break;
         }
         case REQUEST: {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received REQUEST from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received REQUEST from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
+                fflush(stderr);
+            }
             uint32_t index = 0, begin = 0, length = 0;
             memcpy(&index, payload + 0, 4);
             memcpy(&begin, payload + 4, 4);
@@ -261,7 +280,10 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             break;
         }
         case PIECE: {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received PIECE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received PIECE from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
+                fflush(stderr);
+            }
             // Break down the piece message, then process it
             uint32_t index = 0;
             memcpy(&index, payload + 0, 4);
@@ -275,12 +297,18 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             break;
         }
         case CANCEL: {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received CANCEL from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received CANCEL from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
+                fflush(stderr);
+            }
             // Ignore this for now, this is for End Game
             break;
         }
         case PORT: {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Received PORT from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Received PORT from %s\n", inet_ntoa(*(struct in_addr*)&peer->address)); 
+                fflush(stderr);
+            }
             // Ignore this for now, this is for DHT
             break;
         }
@@ -300,7 +328,10 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             return 0;
         }
         if (peer->incoming_buffer[0] != 19 || memcmp(&peer->incoming_buffer[1], PROTOCOL, 19) != 0) {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Expected a handshake message, but got something else. Peer marked for removal\n"); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Expected a handshake message, but got something else. Peer marked for removal\n"); 
+                fflush(stderr);
+            }
             return -1;
         }
         memcpy(protocol, peer->incoming_buffer + offset + 1, 19);   // Consume the pstr
@@ -315,7 +346,10 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             memcpy(peer->id, peer->incoming_buffer + 48, 20);
             size_t bitfield_length = 0;
             //piece_manager_get_our_bitfield(NULL, &bitfield_length);
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Bitfield length is %lu\n", bitfield_length); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Bitfield length is %lu\n", bitfield_length); 
+                fflush(stderr);
+            }
             if (bitfield_length != 0) send_bitfield(peer);
 
             // The entire handshake message has been consumed
@@ -323,7 +357,10 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             available_bytes -= 68;
             peer->handshake_done = true;
         } else {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Expected a handshake message, but got something else. Peer marked for removal\n"); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Expected a handshake message, but got something else. Peer marked for removal\n"); 
+                fflush(stderr);
+            }
             return -1;
         }
     }
@@ -371,7 +408,10 @@ int peer_manager_send_interested(Peer *peer) {
     message[4] = INTERESTED;                // id byte
 
     if (send_message(peer, message, 5) == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to mark peer as interesting (message failed to send)\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Failed to mark peer as interesting (message failed to send)\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -387,7 +427,10 @@ int peer_manager_send_not_interested(Peer *peer) {
     message[4] = NOT_INTERESTED;            // id byte
 
     if (send_message(peer, message, 5) == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to mark peer as not interesting (message failed to send)\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Failed to mark peer as not interesting (message failed to send)\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -403,7 +446,10 @@ int peer_manager_choke_peer(Peer *peer) {
     message[4] = CHOKE;                     // id byte
 
     if (send_message(peer, message, 5) == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to choke peer (choke failed to send)\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Failed to choke peer (choke failed to send)\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -419,7 +465,10 @@ int peer_manager_unchoke_peer(Peer *peer) {
     message[4] = UNCHOKE;                   // id byte
 
     if (send_message(peer, message, 5) == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to unchoke (unchoke failed to send)\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Failed to unchoke (unchoke failed to send)\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -441,7 +490,10 @@ int send_bitfield(Peer *peer) {
     memcpy(message + 5, our_bitfield, (unsigned long)bitfield_length);
 
     if (send_message(peer, message, 5 + (unsigned long)bitfield_length) == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to send bitfield\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Failed to send bitfield\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -451,11 +503,17 @@ int send_bitfield(Peer *peer) {
 // Sends the request and queues it as an outstanding request and will be stored for reference until a corresponding piece is received.
 int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length) {
     if (peer->num_outstanding_requests >= MAX_OUTSTANDING_REQUESTS) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Too many outstanding requests for this peer, try again later\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Too many outstanding requests for this peer, try again later\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
     if (peer->choked) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: This peer is choking us, you cannot send a request to it\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: This peer is choking us, you cannot send a request to it\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -478,12 +536,18 @@ int peer_manager_send_request(Peer *peer, uint32_t request_index, uint32_t reque
     offset += 4;
 
     if (offset != 17) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Something went wrong while constructing the request message\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Something went wrong while constructing the request message\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
     if (send_message(peer, message, 17) == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Something went wrong while sending the request message\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Something went wrong while sending the request message\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -509,7 +573,10 @@ int peer_manager_send_keepalive_message(Peer *peer) {
     memcpy(message, &length_prefix, 4);
 
     if (send_message(peer, message, 4) == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to send keepalive message\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Failed to send keepalive message\n");
+            fflush(stderr);
+        }
         return -1;
     }
     peer->last_keepalive_to_peer = time(NULL);
@@ -532,7 +599,10 @@ int peer_manager_receive_messages(Peer *peer) {
         MSG_DONTWAIT
     );
     if (received == 0) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: receive_messages failed, peer on socket %d has disconnected\n", peer->sock_fd); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: receive_messages failed, peer on socket %d has disconnected\n", peer->sock_fd); 
+            fflush(stderr);
+        }
         return 0;
     }
     if (received == -1) {
@@ -571,7 +641,10 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
 
     new_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (new_sock == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to get new socket while creating new connection with %s\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Failed to get new socket while creating new connection with %s\n", inet_ntoa(addr->sin_addr)); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -590,12 +663,18 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
         int flags = fcntl(new_sock, F_GETFL, 0);
         fcntl(new_sock, F_SETFL, flags | O_NONBLOCK);
         if (fcntl(new_sock, F_GETFL, 0) == -1 || fcntl(new_sock, F_SETFL, flags | O_NONBLOCK) == -1) {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to set new socket to non-blocking\n"); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Failed to set new socket to non-blocking\n"); 
+                fflush(stderr);
+            }
             return -1;
         }
         int result = connect(new_sock, (struct sockaddr *)addr, addr_len);
         if (result == -1 && errno != EINPROGRESS) {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s\n", inet_ntoa(addr->sin_addr)); 
+                fflush(stderr);
+            }
             close(new_sock);
             return -1;
         }
@@ -607,7 +686,10 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
 
         int connect_attempt = poll(&connect_fd, 1, 100);       // Timeout for connect to be 100 milliseconds
         if (connect_attempt == -1) {
-            if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s (poll error)\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[PEER_MANAGER]: Failed to create connection with %s (poll error)\n", inet_ntoa(addr->sin_addr)); 
+                fflush(stderr);
+            }
             close(new_sock);
             return -1;
         } else if (connect_attempt == 0) {
@@ -620,12 +702,18 @@ int peer_manager_add_peer(Torrent torrent, const struct sockaddr_in *addr, sockl
             socklen_t error_length = sizeof(sock_error);
             fcntl(new_sock, F_SETFL, flags);
             if (getsockopt(new_sock, SOL_SOCKET, SO_ERROR, &sock_error, &error_length) == -1) {
-                if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Something went wrong while connecting %s\n", inet_ntoa(addr->sin_addr)); fflush(stderr);}
+                if (get_args().debug_mode) {
+                    fprintf(stderr, "[PEER_MANAGER]: Something went wrong while connecting %s\n", inet_ntoa(addr->sin_addr)); 
+                    fflush(stderr);
+                }
                 close(new_sock);
                 return -1;
             }
             if (sock_error) {
-                if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Something went wrong while connecting %s: %s\n", inet_ntoa(addr->sin_addr), strerror(sock_error)); fflush(stderr);}
+                if (get_args().debug_mode) {
+                    fprintf(stderr, "[PEER_MANAGER]: Something went wrong while connecting %s: %s\n", inet_ntoa(addr->sin_addr), strerror(sock_error)); 
+                    fflush(stderr);
+                }
                 close(new_sock);
                 return -1;
             }
@@ -702,7 +790,10 @@ int peer_manager_remove_peer(Peer *peer) {
     }
 
     if (fds_index == -1) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Attempted to remove a peer that did not exist\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Attempted to remove a peer that did not exist\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -741,7 +832,10 @@ int peer_manager_remove_peer(Peer *peer) {
 int update_download_upload_rate(Peer *peer) {
   struct timeval current_time;
     if (gettimeofday(&current_time, NULL) != 0) { // Get current time
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Failed to get time for upload/download rates calculation\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Failed to get time for upload/download rates calculation\n"); 
+            fflush(stderr);
+        }
         return -1;
     }
 
@@ -749,7 +843,10 @@ int update_download_upload_rate(Peer *peer) {
     double time_diff = (current_time.tv_sec - peer->last_rate_time.tv_sec) + (current_time.tv_usec - peer->last_rate_time.tv_usec) / 1000000.0; // Calculate time difference in seconds
 
     if (time_diff <= 0) {
-        if (get_args().debug_mode) {fprintf(stderr, "[PEER_MANAGER]: Time difference for rate calc is zero or negative.\n"); fflush(stderr);}
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Time difference for rate calc is zero or negative.\n"); 
+            fflush(stderr);
+        }
         return 0; 
     }
 

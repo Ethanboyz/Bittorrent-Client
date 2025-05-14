@@ -22,7 +22,6 @@ static char *output_file_name_global = NULL;        // Name of the output file
 static uint32_t pieces_we_have_count = 0;           // Count of pieces we have verified
 static uint64_t bytes_we_have_downloaded = 0;       // Total verified bytes downloaded
 
-
 static uint32_t calculate_num_blocks_for_piece(uint32_t piece_len_bytes);
 static uint32_t calculate_block_length(uint32_t piece_actual_len, uint32_t block_index_in_piece, uint32_t num_total_blocks_for_this_piece);
 static void set_bit_in_bitfield(uint8_t *bitfield_array, uint32_t piece_idx_to_set);
@@ -73,7 +72,7 @@ int piece_manager_init(const Torrent *torrent, const char *output_filename) {
         if (i == total_torrent_pieces - 1) {
             all_managed_pieces[i].piece_length = total_torrent_file_length - (standard_piece_length * (total_torrent_pieces - 1));
             if (total_torrent_file_length == 0 && total_torrent_pieces == 1) {
-                 all_managed_pieces[i].piece_length = 0; 
+                all_managed_pieces[i].piece_length = 0; 
             }
         } else {
             all_managed_pieces[i].piece_length = standard_piece_length;
@@ -82,9 +81,9 @@ int piece_manager_init(const Torrent *torrent, const char *output_filename) {
         if (torrent_piece_hashes_ptr) {
             memcpy(all_managed_pieces[i].expected_hash, torrent_piece_hashes_ptr + (i * 20), 20);
         } else {
-             if (get_args().debug_mode) fprintf(stderr, "[PieceManager] Error: Torrent piece hashes are NULL.\n");
-             free(all_managed_pieces); all_managed_pieces = NULL;
-             return -1;
+            if (get_args().debug_mode) fprintf(stderr, "[PieceManager] Error: Torrent piece hashes are NULL.\n");
+            free(all_managed_pieces); all_managed_pieces = NULL;
+            return -1;
         }
 
         all_managed_pieces[i].num_total_blocks = calculate_num_blocks_for_piece(all_managed_pieces[i].piece_length);
@@ -130,21 +129,21 @@ int piece_manager_init(const Torrent *torrent, const char *output_filename) {
     if (!output_file_ptr) {
         if (get_args().debug_mode) {
             fprintf(stderr, "[PieceManager] CRITICAL: Could not open/create file '%s': %s.\n",
-                    output_file_name_global, strerror(errno));
+                output_file_name_global, strerror(errno));
         }
     } else {
         if (total_torrent_file_length > 0) {
             if (fseeko(output_file_ptr, total_torrent_file_length - 1, SEEK_SET) == 0) {
                 if (fwrite("\0", 1, 1, output_file_ptr) != 1) {
-                     if (get_args().debug_mode) fprintf(stderr, "[PieceManager] Warn: Pre-alloc write failed for '%s'.\n", output_file_name_global);
+                    if (get_args().debug_mode) fprintf(stderr, "[PieceManager] Warn: Pre-alloc write failed for '%s'.\n", output_file_name_global);
                 }
                 fflush(output_file_ptr);
                 rewind(output_file_ptr);
             } else if (errno != 0) {
-                 if (get_args().debug_mode) fprintf(stderr, "[PieceManager] Warn: Pre-alloc fseeko failed for '%s': %s\n", output_file_name_global, strerror(errno));
+                if (get_args().debug_mode) fprintf(stderr, "[PieceManager] Warn: Pre-alloc fseeko failed for '%s': %s\n", output_file_name_global, strerror(errno));
             }
         } else {
-             fflush(output_file_ptr);
+            fflush(output_file_ptr);
         }
     }
     
@@ -153,7 +152,7 @@ int piece_manager_init(const Torrent *torrent, const char *output_filename) {
 
     if (get_args().debug_mode) {
         fprintf(stderr, "[PIECE_MANAGER] Initialized. Pieces: %u, File size: %lu, Output: %s\n",
-                total_torrent_pieces, total_torrent_file_length, output_file_name_global);
+            total_torrent_pieces, total_torrent_file_length, output_file_name_global);
     }
     return 0;
 }
