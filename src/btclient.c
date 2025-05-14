@@ -25,6 +25,7 @@
 #define BLUE_TEXT "\x1b[34m"            // Set text to blue
 #define CYAN_TEXT "\x1b[36m"            // Set text to cyan
 
+
 static Peer peers[MAX_PEERS];
 static struct pollfd fds[MAX_PEERS + 1];
 static int num_fds;
@@ -233,7 +234,6 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // TODO: clean up size being allocated for the buffer (line 185 too)
     char *buffer = malloc(1024 * 1024 * 1024);
     if (!buffer) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Error: Failed to allocate buffer for torrent file.\n"); fflush(stderr);
@@ -278,7 +278,7 @@ int main(int argc, char *argv[]) {
 
     // TODO: clean up how we're setting peer id 
     srand(time(NULL));
-    snprintf((char*)client_peer_id, sizeof(client_peer_id), "-PC0123-%011ld", rand() % 100000000000L);
+    snprintf((char*)client_peer_id, sizeof(client_peer_id), PEER_ID);
 
     TrackerResponse response = tracker_get(current_torrent->announce, current_torrent->info_hash, client_peer_id, args.port, 0, 0, total_len);
     if (get_args().debug_mode) {

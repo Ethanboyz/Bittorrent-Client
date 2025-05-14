@@ -3,6 +3,9 @@
 
 #include "arg_parser.h"
 #include "peer_manager.h"
+
+#define PEER_ID "cmsc417bittorrentfid"
+
 // MOD: Forward declare Peer struct to avoid circular dependency if peer_manager.h includes btclient.h for get_args?????
 struct Peer; 
 struct pollfd;
