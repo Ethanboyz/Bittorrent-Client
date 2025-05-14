@@ -175,6 +175,43 @@ int client_listen(int port) {
     return 0;
 }
 
+void connect_peers(int num_peers_from_tracker, TrackerResponse response) {
+    if (num_peers_from_tracker > 0) {
+        if (get_args().debug_mode) { 
+            fprintf(stderr, "[BTCLIENT_MAIN]: Attempting to connect to %d peers from tracker...\n", num_peers_from_tracker); 
+            fflush(stderr); 
+        }
+        for (int i = 0; i < num_peers_from_tracker; i++) {
+            struct sockaddr_in peer_addr_sa;
+            memset(&peer_addr_sa, 0, sizeof(peer_addr_sa));
+            peer_addr_sa.sin_family = AF_INET;
+            peer_addr_sa.sin_port = htons(response.peers[i].port);
+            peer_addr_sa.sin_addr.s_addr = htonl(response.peers[i].address);
+
+            char peer_ip_log_str[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &(peer_addr_sa.sin_addr), peer_ip_log_str, INET_ADDRSTRLEN);
+            if (get_args().debug_mode) { 
+                fprintf(stderr, "[BTCLIENT_MAIN]: Attempting to add peer %s:%d\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port)); 
+                fflush(stderr); 
+            }
+
+            int new_sock = peer_manager_add_peer(*current_torrent, &peer_addr_sa, sizeof(peer_addr_sa));
+            if (new_sock > 0) {
+                if (get_args().debug_mode) { 
+                    fprintf(stderr, "[BTCLIENT_MAIN]: Initiated connection process for peer %s:%d. Peer socket: %d. Current num_fds: %d, num_peers: %d\n", 
+                        peer_ip_log_str, ntohs(peer_addr_sa.sin_port), new_sock, *get_num_fds(), *get_num_peers()); 
+                        fflush(stderr); 
+                }
+            } else {
+                if (get_args().debug_mode) { 
+                    fprintf(stderr, "[BTCLIENT_MAIN]: Failed to add peer %s:%d.\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port)); 
+                    fflush(stderr); 
+                }
+            }
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
     printf(CLEAR_SCREEN);        // Clear the terminal screen for torrent info and progress bar
     args = arg_parseopt(argc, argv);
@@ -269,46 +306,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    if (num_peers_from_tracker > 0) {
-        if (get_args().debug_mode) { 
-            fprintf(stderr, "[BTCLIENT_MAIN]: Attempting to connect to %d peers from tracker...\n", num_peers_from_tracker); 
-            fflush(stderr); 
-        }
-        for (int i = 0; i < num_peers_from_tracker; i++) {
-            struct sockaddr_in peer_addr_sa;
-            memset(&peer_addr_sa, 0, sizeof(peer_addr_sa));
-            peer_addr_sa.sin_family = AF_INET;
-            peer_addr_sa.sin_port = htons(response.peers[i].port);
-            peer_addr_sa.sin_addr.s_addr = htonl(response.peers[i].address);
-
-            char peer_ip_log_str[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &(peer_addr_sa.sin_addr), peer_ip_log_str, INET_ADDRSTRLEN);
-            if (get_args().debug_mode) { 
-                fprintf(stderr, "[BTCLIENT_MAIN]: Attempting to add peer %s:%d\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port)); 
-                fflush(stderr); 
-            }
-
-            int new_sock = peer_manager_add_peer(*current_torrent, &peer_addr_sa, sizeof(peer_addr_sa));
-            if (new_sock > 0) {
-                if (get_args().debug_mode) { 
-                    fprintf(stderr, "[BTCLIENT_MAIN]: Initiated connection process for peer %s:%d. Peer socket: %d. Current num_fds: %d, num_peers: %d\n", 
-                        peer_ip_log_str, ntohs(peer_addr_sa.sin_port), new_sock, *get_num_fds(), *get_num_peers()); 
-                        fflush(stderr); 
-                }
-            } else {
-                if (get_args().debug_mode) { 
-                    fprintf(stderr, "[BTCLIENT_MAIN]: Failed to add peer %s:%d.\n", peer_ip_log_str, ntohs(peer_addr_sa.sin_port)); 
-                    fflush(stderr); 
-                }
-            }
-        }
-    }   
-
-    free_tracker_response(&response);
-    if (get_args().debug_mode) { 
-        fprintf(stderr, "[BTCLIENT_MAIN]: Freed tracker response data.\n"); 
-        fflush(stderr); 
-    }
+    connect_peers(num_peers_from_tracker, response);
 
     if (get_args().debug_mode) {
         fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Entering main poll loop. Initial num_fds: %d, num_peers: %d\n", *get_num_fds(), *get_num_peers());
@@ -319,6 +317,7 @@ int main(int argc, char *argv[]) {
     print_progress_bar(total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() / total_len : 0.0);
 
     // infinite loop
+    connect_peers(num_peers_from_tracker, response);
     while (1) {
         if (get_args().debug_mode && (*get_num_fds() > 1 || *get_num_peers() > 0) ) {
              fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Polling %d FDs. Active Peers: %d. Downloaded: %lu / %ld (%.2f%%)\n",
@@ -502,6 +501,12 @@ int main(int argc, char *argv[]) {
             fflush(stderr);
             break;
         }
+    }
+
+    free_tracker_response(&response);
+    if (get_args().debug_mode) { 
+        fprintf(stderr, "[BTCLIENT_MAIN]: Freed tracker response data.\n"); 
+        fflush(stderr); 
     }
 
     printf("\n");           // Exit progress bar

@@ -70,7 +70,7 @@ static int send_handshake(Peer *peer) {
     // Info_hash and peer_id
     memcpy(message + offset, torrent_get_info_hash(&peer->torrent), 20);
     offset += 20;
-    memcpy(message + offset, &peer->id, 20);
+    memcpy(message + offset, our_id, 20);
     offset += 20;
 
     if (offset != handshake_length) {
