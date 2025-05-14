@@ -454,19 +454,11 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        // MODIFIED: Original poll timeout log might be too verbose, can be uncommented if needed
-        // if (poll_result == 0 && get_args().debug_mode && (*get_num_fds() <=1 && *get_num_peers() == 0)) {
-        //     fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Poll timed out. No events. No connected peers. Num_fds: %d\n", *get_num_fds());
-        //     fflush(stderr);
-        // }
-
-        // Handle incoming connections on listen socket
         if (fds[0].revents & POLLIN) {
             if (get_args().debug_mode) {
                 fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Incoming connection detected on listen socket %d.\n", fds[0].fd);
                 fflush(stderr);
             }
-            // ADDED: Check MAX_PEERS before attempting to add an incoming peer
             if (*get_num_peers() < MAX_PEERS) {
                  peer_manager_add_peer(*current_torrent, NULL, 0); // Will attempt to accept one connection
             } else {
@@ -518,11 +510,6 @@ int main(int argc, char *argv[]) {
                 break; // Or continue to next poll() cycle
             }
             // current_peer_ptr = &peers[i - 1];
-
-            // Right now, we are sending identical requests because every time we loop in the while loop, we havent received a piece for the previously requested request,
-            // so we are making a new request even though an outstanding request already exists for this piece.
-            // What should happen is to record the requested piece, and move onto another. Once we get a piece, we can mark the corresponding request as completed and
-            // remove it. We can resend a request if it isn't fulfilled in a certain amount of time.
             if (current_peer_ptr->handshake_done && !current_peer_ptr->choked && current_peer_ptr->is_interesting && current_peer_ptr->bitfield != NULL) {
                 while (current_peer_ptr->num_outstanding_requests < MAX_OUTSTANDING_REQUESTS) {
                     uint32_t block_begin_offset;
