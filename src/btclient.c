@@ -576,27 +576,10 @@ int main(int argc, char *argv[]) {
                 // if receive_status == -1 (EAGAIN/EWOULDBLOCK or other non-fatal error), continue polling
             }
 
-            // Ensure current_peer_ptr points to correct peer if a different peer was removed
-            // The continue statements above should handle cases where current_peer_ptr itself is removed.
-            // If loop continues to this point, fds[i] is still valid for this iteration.
-            // And current_peer_ptr was set at the start of this iteration for fds[i].
-            // If a peer was removed, `i` is not incremented due to `continue`,
-            // so the next iteration of the for loop will correctly process the (new) peer at fds[i].
-
-            // Logic to send requests to peers if conditions are met
-            // We need to ensure current_peer_ptr is still valid (i.e., i < *get_num_fds())
             if (i >= *get_num_fds()) { // Check bounds as num_fds might have changed
                 break; // Or continue to next poll() cycle
             }
-            // Re-assign current_peer_ptr to be absolutely sure after potential compactions if not continuing
-            // current_peer_ptr = &peers[i - 1]; // This was the original line causing the re-fetch concern.
-                                            // However, if a peer is removed, `continue` is used, so `i`
-                                            // isn't incremented, and the loop re-evaluates `fds[i]` and `peers[i-1]`.
-                                            // If no removal, `i` increments at the end.
-                                            // The current_peer_ptr from the start of the loop for `fds[i]` *should* be the correct one to operate on
-                                            // for the rest of this iteration, assuming no other peer removal shifted it.
-                                            // The original code's structure for current_peer and peer_log_idx was okay.
-            // For safety and clarity, explicitly use `peers[i-1]` or `current_peer_ptr` defined at the start of this for-loop iteration.
+            // current_peer_ptr = &peers[i - 1];
 
             if (current_peer_ptr->handshake_done && !current_peer_ptr->choked && current_peer_ptr->is_interesting && current_peer_ptr->bitfield != NULL) {
                 while (current_peer_ptr->num_outstanding_requests < MAX_OUTSTANDING_REQUESTS) {
