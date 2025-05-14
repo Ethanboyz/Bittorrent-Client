@@ -479,24 +479,34 @@ int peer_manager_unchoke_peer(Peer *peer) {
 // Send bitfield to peer
 int send_bitfield(Peer *peer) {
     const uint8_t *our_bitfield;
-    size_t *bitfield_length = 0;
-    piece_manager_get_our_bitfield(&our_bitfield, bitfield_length);
-    uint8_t message[5 + (unsigned long)bitfield_length];
+    size_t bitfield_length = 0;
 
-    uint32_t length_prefix = htonl(1 + (unsigned long)bitfield_length); // 4 length bytes
+    piece_manager_get_our_bitfield(&our_bitfield, &bitfield_length);
+    if (bitfield_length == 0 || our_bitfield == NULL) {
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[PEER_MANAGER]: Bitfield is empty or NULL, not sending\n");
+            fflush(stderr);
+        }
+        return 0;
+    }
+
+    uint8_t *message = malloc(5 + bitfield_length);
+    if (!message) return -1;
+
+    uint32_t length_prefix = htonl(1 + bitfield_length);
     memcpy(message, &length_prefix, 4);
-    message[4] = BITFIELD;                                              // id byte
+    message[4] = BITFIELD;
+    memcpy(message + 5, our_bitfield, bitfield_length);
 
-    memcpy(message + 5, our_bitfield, (unsigned long)bitfield_length);
-
-    if (send_message(peer, message, 5 + (unsigned long)bitfield_length) == -1) {
+    if (send_message(peer, message, 5 + bitfield_length) == -1) {
         if (get_args().debug_mode) {
             fprintf(stderr, "[PEER_MANAGER]: Failed to send bitfield\n"); 
             fflush(stderr);
         }
+        free(message);
         return -1;
     }
-
+    free(message);
     return 0;
 }
 
