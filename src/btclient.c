@@ -491,42 +491,6 @@ int main(int argc, char *argv[]) {
                 continue; // num_fds changed, so re-evaluate loop condition and current fds[i]
             }
 
-            // MODIFIED: POLLOUT handling for connect() success/failure
-            if (fds[i].revents & POLLOUT) {
-                // This 'current_peer_ptr' should be valid as no removal happened on this POLLOUT branch yet.
-                if (!current_peer_ptr->handshake_done) { 
-                    int sock_err = 0;
-                    socklen_t len = sizeof(sock_err);
-                    if (getsockopt(fds[i].fd, SOL_SOCKET, SO_ERROR, &sock_err, &len) == -1 || sock_err != 0) {
-                        if (get_args().debug_mode) {
-                            fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Outgoing connection for peer_idx %d (socket %d) failed: %s. Removing.\n",
-                                    peer_log_idx, fds[i].fd, sock_err == 0 ? "Unknown err on getsockopt" : strerror(sock_err));
-                            fflush(stderr);
-                        }
-                        peer_manager_remove_peer(current_peer_ptr);
-                        continue;
-                    } else {
-                        // Connection successful
-                        fds[i].events &= ~POLLOUT; // Stop monitoring POLLOUT
-                        fds[i].events |= POLLIN;   // Start monitoring POLLIN
-                        if (get_args().debug_mode) {
-                            fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Outgoing connection for peer_idx %d (socket %d) successful. Now monitoring POLLIN.\n",
-                                    peer_log_idx, fds[i].fd);
-                            fflush(stderr);
-                        }
-                        // Handshake would have been sent by peer_manager_add_peer.
-                        // Now we wait for POLLIN for their handshake.
-                    }
-                } else {
-                     if (get_args().debug_mode) {
-                        fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Socket %d for peer_idx %d writable (POLLOUT), but handshake done. Usually means send buffer is free.\n",
-                                fds[i].fd, peer_log_idx);
-                        fflush(stderr);
-                    }
-                    fds[i].events &= ~POLLOUT; 
-                }
-            }
-
             if (fds[i].revents & POLLIN) {
                 // current_peer_ptr should still be valid unless POLLOUT removed it.
                 // If it was removed by POLLOUT, `continue` was hit.
@@ -555,6 +519,10 @@ int main(int argc, char *argv[]) {
             }
             // current_peer_ptr = &peers[i - 1];
 
+            // Right now, we are sending identical requests because every time we loop in the while loop, we havent received a piece for the previously requested request,
+            // so we are making a new request even though an outstanding request already exists for this piece.
+            // What should happen is to record the requested piece, and move onto another. Once we get a piece, we can mark the corresponding request as completed and
+            // remove it. We can resend a request if it isn't fulfilled in a certain amount of time.
             if (current_peer_ptr->handshake_done && !current_peer_ptr->choked && current_peer_ptr->is_interesting && current_peer_ptr->bitfield != NULL) {
                 while (current_peer_ptr->num_outstanding_requests < MAX_OUTSTANDING_REQUESTS) {
                     uint32_t block_begin_offset;
