@@ -89,6 +89,7 @@ int piece_manager_init(const Torrent *torrent, const char *output_filename) {
         all_managed_pieces[i].num_total_blocks = calculate_num_blocks_for_piece(all_managed_pieces[i].piece_length);
         if (all_managed_pieces[i].num_total_blocks > 0) {
             all_managed_pieces[i].block_status_received = calloc(all_managed_pieces[i].num_total_blocks, sizeof(bool));
+            all_managed_pieces[i].block_requested = calloc(all_managed_pieces[i].num_total_blocks, sizeof(bool));
             if (!all_managed_pieces[i].block_status_received) {
                 if (get_args().debug_mode) perror("[PieceManager] Error alloc block_status");
                 for(uint32_t j=0; j<i; ++j) free(all_managed_pieces[j].block_status_received);
@@ -235,6 +236,9 @@ int piece_manager_record_block_received(uint32_t piece_index, uint32_t begin, co
             }
             return -1; // Indicate failure
         }
+
+        piece->block_status_received[block_index_in_piece] = true;
+        piece->block_requested[block_index_in_piece] = false;
     }
     return 0;
 }
@@ -327,9 +331,10 @@ bool piece_manager_get_block_to_request_from_piece(uint32_t piece_idx, uint32_t 
 
     // Find first unreceived block
     for (uint32_t block_i = 0; block_i < piece->num_total_blocks; ++block_i) {
-        if (!piece->block_status_received[block_i]) {
-            *begin_out = block_i * DEFAULT_BLOCK_LENGTH;
+        if (!piece->block_status_received[block_i] && !piece->block_requested[block_i]) {
+            *begin_out  = block_i * DEFAULT_BLOCK_LENGTH;
             *length_out = calculate_block_length(piece->piece_length, block_i, piece->num_total_blocks);
+            piece->block_requested[block_i] = true;
             return true;
         }
     }
@@ -412,6 +417,7 @@ bool piece_manager_read_block(uint32_t piece_index, uint32_t begin, uint32_t blo
     return true;
 }
 
+// --- Helper Function Implementations ---
 static uint32_t calculate_num_blocks_for_piece(uint32_t piece_len_bytes) {
     if (piece_len_bytes == 0) return 0;
     if (DEFAULT_BLOCK_LENGTH == 0) return (piece_len_bytes > 0) ? 1 : 0;

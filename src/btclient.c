@@ -38,6 +38,13 @@ static unsigned char client_peer_id[20];
 static time_t last_tracker_request_time;
 static int tracker_interval_seconds;
 
+static time_t last_optimistic_unchoke_time = 0;
+#define OPTIMISTIC_UNCHOKE_INTERVAL 30 
+
+static time_t last_choke_time = 0;
+#define CHOKING_INTERVAL 10
+#define MAX_UNCHOKED_PEERS 4
+
 struct run_arguments get_args(void) { 
     return args; 
 }
@@ -79,6 +86,149 @@ static void print_progress_bar(double progress) {
     printf("| %.2f%%\r", progress * 100.0);
     fflush(stdout);
 }
+
+// run optimistic unchoke every 30 seconds as described in wiki
+void optimistic_unchoke(void) {
+    Peer *peers = get_peers();
+    int *num_peers = get_num_peers();
+    time_t current_time = time(NULL);
+    
+    if (current_time - last_optimistic_unchoke_time < OPTIMISTIC_UNCHOKE_INTERVAL) {
+        return; 
+    }
+    
+    if (get_args().debug_mode) {
+        fprintf(stderr, "[BTCLIENT]: Performing optimistic unchoke\n");
+        fflush(stderr);
+    }
+    
+    int potential_unchoke[MAX_PEERS];
+    int num_potential = 0;
+    
+    // get a list of peers that we are currently choking and is interested in us
+    for (int i = 0; i < *num_peers; i++) {
+        if (peers[i].choking && peers[i].is_interested) {
+            potential_unchoke[num_potential] = i;
+            num_potential++;
+        }
+    }
+
+    // at any one time there is a single peer which is unchoked regardless of its upload rate
+    if (num_potential > 0) {
+        int random_index = rand() % num_potential;
+        int peer_to_unchoke = potential_unchoke[random_index];
+        
+        if (get_args().debug_mode) {
+            fprintf(stderr, "[BTCLIENT]: Optimistically unchoking peer at index %d\n", peer_to_unchoke);
+            fflush(stderr);
+        }
+        
+        peer_manager_unchoke_peer(&peers[peer_to_unchoke]);
+    }
+    
+    last_optimistic_unchoke_time = current_time;
+}
+
+// tit-for-tat-ish algorithm described in wiki
+// change choked peers every 10 seconds
+void choke_peer(void) {
+    Peer *peers = get_peers();
+    int *num_peers = get_num_peers();
+    time_t current_time = time(NULL);
+    
+    if (current_time - last_choke_time < CHOKING_INTERVAL) {
+        return;
+    }
+    
+    if (get_args().debug_mode) {
+        fprintf(stderr, "[BTCLIENT]: Running choking algorithm\n");
+        fflush(stderr);
+    }
+    
+    for (int i = 0; i < *num_peers; i++) {
+        update_download_upload_rate(&peers[i]);
+    }
+        
+    // track peers that are interested and their upload/download rates
+    int peer_indices[MAX_PEERS];
+    double peer_rates[MAX_PEERS];
+
+    bool is_seeding = piece_manager_is_download_complete();
+    
+    for (int i = 0; i < *num_peers; i++) {
+        peer_indices[i] = i;
+        // client has complete file so track peers' download rates
+        if (is_seeding) {
+            peer_rates[i] = get_download_rate(&peers[i]);
+        } else {
+            // track peers' upload rates
+            peer_rates[i] = get_upload_rate(&peers[i]);   
+        }
+    }
+        
+    // sort all peers by highest to lowest upload/download rates
+    for (int i = 0; i < *num_peers; i++) {
+        for (int j = i + 1; j < *num_peers; j++) {
+            if (peer_rates[j] > peer_rates[i]) {
+                double temp_rate = peer_rates[i];
+                peer_rates[i] = peer_rates[j];
+                peer_rates[j] = temp_rate;
+                
+                int temp_index = peer_indices[i];
+                peer_indices[i] = peer_indices[j];
+                peer_indices[j] = temp_index;
+            }
+        }
+    }
+
+    // unchoking the four peers which have the best upload/download rate and are interested
+    // these are now the downloaders
+    int num_downloaders = 0;
+    for (int i = 0; i < *num_peers && num_downloaders < MAX_UNCHOKED_PEERS; i++) {
+        int peer_idx = peer_indices[i];
+        
+        if (peers[peer_idx].is_interested) {
+            if (peers[peer_idx].choking) {
+                peer_manager_unchoke_peer(&peers[peer_idx]);
+            }
+            num_downloaders++;
+        }
+    }
+
+    // peers which have a better upload rate (as compared to the downloaders) 
+    // but aren't interested get unchoked
+    double min_unchoked_rate = 0.0;
+    if (num_downloaders >= MAX_UNCHOKED_PEERS) {
+        for (int i = 0; i < *num_peers; i++) {
+            int peer_idx = peer_indices[i];
+            if (peers[peer_idx].is_interested && !peers[peer_idx].choking) {
+                min_unchoked_rate = peer_rates[i];
+                break;
+            }
+        }
+    }
+
+    for (int i = 0; i < *num_peers; i++) {
+        int peer_idx = peer_indices[i];
+        if (!peers[peer_idx].is_interested) {
+            if (peer_rates[i] > min_unchoked_rate || num_downloaders < MAX_UNCHOKED_PEERS) {
+                if (peers[peer_idx].choking) {
+                    peer_manager_unchoke_peer(&peers[peer_idx]);
+                }
+            } else {
+                if (!peers[peer_idx].choking) {
+                    peer_manager_choke_peer(&peers[peer_idx]);
+                }
+            }
+        // if they (referring to prev comment) become interested, 
+        // the downloader with the worst upload rate gets choked
+        } else if (peers[peer_idx].is_interested && !peers[peer_idx].choking && 
+                peer_rates[i] < min_unchoked_rate && num_downloaders >= MAX_UNCHOKED_PEERS) {
+            peer_manager_choke_peer(&peers[peer_idx]);
+        }
+    }
+    last_choke_time = current_time;
+} 
 
 int client_listen(int port) {
     struct sockaddr_in server_addr;
@@ -338,8 +488,14 @@ int main(int argc, char *argv[]) {
 
     printf("\n%s DOWNLOAD PROGRESS%s\n", BLUE_TEXT, RESET_TEXT);
     print_progress_bar(total_len > 0 ? (double)piece_manager_get_bytes_downloaded_total() / total_len : 0.0);
+    time_t current_time = time(NULL);
+    last_optimistic_unchoke_time = current_time;
+    last_choke_time = current_time;
 
     while (1) {
+        optimistic_unchoke();
+        choke_peer();
+
         // MODIFIED: Debug log to include time until next tracker refresh
         if (get_args().debug_mode && (*get_num_fds() > 1 || *get_num_peers() > 0)) {
             fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Polling %d FDs. Active Peers: %d. Downloaded: %lu / %ld (%.2f%%). Tracker refresh in %ld s.\n",
@@ -565,6 +721,7 @@ int main(int argc, char *argv[]) {
             }
             i++; // Move to the next fd ONLY if no peer was removed 
         }
+
         peer_manager_send_keep_alives();
         // TODO: for uploads to work we should not be breaking when we're done downloading
         if (piece_manager_is_download_complete()) {
@@ -597,6 +754,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Cleaning up peer connections...\n");
         fflush(stderr);
     }
+    // MODIFIED: Cleanup loop 
     for (int i_cleanup = (*get_num_fds()) - 1; i_cleanup >= 1; i_cleanup--) {
          // peers array index is fds index - 1
         if (i_cleanup -1 < *get_num_peers() && i_cleanup -1 >= 0) { // Check if peer exists at this index
@@ -616,6 +774,9 @@ int main(int argc, char *argv[]) {
                          i_cleanup, *get_num_peers(), fds[i_cleanup].fd);
                 fflush(stderr);
             }
+            // Ensure fd is closed if it wasn't handled by peer_manager_remove_peer (e.g., if arrays got desynced somehow)
+            // peer_manager_remove_peer should have closed fds[i_cleanup].fd if a peer was associated.
+            // This is a fallback.
             if (fds[i_cleanup].fd != -1) { // Double check as peer_manager_remove_peer should set it to -1 or remove the entry
                 close(fds[i_cleanup].fd);
                 fds[i_cleanup].fd = -1;
@@ -640,7 +801,7 @@ int main(int argc, char *argv[]) {
         fflush(stderr);
     }
 
-    if (fds[0].fd != -1) { 
+    if (fds[0].fd != -1) { // Close listen socket
         if (get_args().debug_mode) {
             fprintf(stderr, "[BTCLIENT_MAIN]: Closing listen socket %d.\n", fds[0].fd);
             fflush(stderr);
@@ -648,6 +809,7 @@ int main(int argc, char *argv[]) {
         close(fds[0].fd);
         fds[0].fd = -1;
     }
+    // MODIFIED: reset global counts
     *get_num_fds() = 0;
     *get_num_peers() = 0;
 

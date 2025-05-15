@@ -847,7 +847,7 @@ void peer_manager_send_keep_alives() {
     for (int i = 1; i < *num_fds_ptr; ++i) {
         Peer *p = &peers[i - 1];
 
-        if (now - p->last_keepalive_to_peer >= 120) {
+        if (now - p->last_keepalive_to_peer >= 60) {
             if (get_args().debug_mode) {
                 fprintf(stderr, "[BTCLIENT_KEEPALIVE]: Sending keep-alive to peer_idx %d (sock %d)\n", i - 1, fds[i].fd);
                 fflush(stderr);
@@ -865,7 +865,6 @@ void peer_manager_send_keep_alives() {
         }
     }
 }
-
 
 // Updates the download and upload rates. If you want the result rates, call get_download_rate() or get_upload_rate()
 int update_download_upload_rate(Peer *peer) {
