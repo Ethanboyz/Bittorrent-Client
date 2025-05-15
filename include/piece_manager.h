@@ -27,6 +27,7 @@ typedef struct {
     uint32_t num_total_blocks;      // How many blocks make up this piece
     bool *block_status_received;    // Tracks received blocks for this piece
     uint32_t num_blocks_received;   // Count of blocks successfully received
+    bool *block_requested;
 
     // For rarest-first strategy (extra credit)
     int peer_availability_count;  // How many connected peers have this piece
