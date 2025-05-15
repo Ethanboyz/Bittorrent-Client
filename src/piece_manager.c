@@ -405,7 +405,7 @@ bool piece_manager_read_block(uint32_t piece_index, uint32_t begin, uint32_t blo
 
     // calculate file offset to where block is
     uint64_t file_offset = (uint64_t)piece_index * standard_piece_length + begin;
-    if (fseeko(output_file_ptr, file_offset, SEEK_SET) < 0) {
+    if (fseek(output_file_ptr, file_offset, SEEK_SET) < 0) {
         return false;
     }
 
@@ -461,3 +461,12 @@ static bool write_piece_data_to_file(uint32_t piece_idx_to_write, const uint8_t 
     fflush(output_file_ptr); // Ensure data is on disk
     return true;
 }
+
+int piece_manager_get_bytes_downloaded() {
+    return bytes_we_have_downloaded;
+}
+
+ManagedPiece *piece_manager_get_all_managed_pieces() {
+    return all_managed_pieces;
+}
+

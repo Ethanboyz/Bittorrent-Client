@@ -284,7 +284,9 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
                 break;
             }
 
+            
             uint8_t *block = malloc(length);
+            /*
             if (!piece_manager_read_block(index, begin, length, block)) {
                 if (get_args().debug_mode) {
                     fprintf(stderr, "[PEER_MANAGER]: Ignoring REQUEST for idx=%u block could not be read from file\n", index);
@@ -292,6 +294,17 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
                 }
                 free(block);
                 break;
+            }
+                */
+            // if the piece is still in memory:
+            if (piece_manager_get_all_managed_pieces()[index].data_buffer) {
+                memcpy(block, piece_manager_get_all_managed_pieces()[index].data_buffer + begin, length);
+            } else {
+                piece_manager_read_block(index, begin, length, block);
+            }
+
+            for (int i = 0; i < length; i++) {
+                fprintf(stderr, "%u", block[i]);
             }
 
             // respond to peer with piece message of requested block
@@ -374,10 +387,9 @@ static int parse_peer_incoming_buffer(Peer *peer) {
 
             // Consume the peer_id
             memcpy(peer->id, peer->incoming_buffer + 48, 20);
-            size_t bitfield_length = 0;
-            piece_manager_get_our_bitfield(NULL, &bitfield_length);
+            int bitfield_length = piece_manager_get_bytes_downloaded();
             if (get_args().debug_mode) {
-                fprintf(stderr, "[PEER_MANAGER]: Bitfield length is %lu\n", bitfield_length); 
+                fprintf(stderr, "[PEER_MANAGER]: Bitfield length is %d\n", bitfield_length); 
                 fflush(stderr);
             }
             if (bitfield_length != 0) send_bitfield(peer);

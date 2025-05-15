@@ -151,4 +151,8 @@ bool piece_manager_has_block(uint32_t piece_index, uint32_t block_offset);
  */
 bool piece_manager_read_block(uint32_t piece_index, uint32_t begin, uint32_t block_length, uint8_t *block);
 
+int piece_manager_get_bytes_downloaded(void);
+
+ManagedPiece *piece_manager_get_all_managed_pieces(void);
+
 #endif // PIECE_MANAGER_H
