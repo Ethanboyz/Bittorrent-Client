@@ -412,7 +412,6 @@ bool piece_manager_read_block(uint32_t piece_index, uint32_t begin, uint32_t blo
     return true;
 }
 
-// --- Helper Function Implementations ---
 static uint32_t calculate_num_blocks_for_piece(uint32_t piece_len_bytes) {
     if (piece_len_bytes == 0) return 0;
     if (DEFAULT_BLOCK_LENGTH == 0) return (piece_len_bytes > 0) ? 1 : 0;

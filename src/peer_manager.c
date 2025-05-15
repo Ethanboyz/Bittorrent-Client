@@ -838,6 +838,35 @@ int peer_manager_remove_peer(Peer *peer) {
     return 0;
 }
 
+void peer_manager_send_keep_alives() {
+    Peer *peers = get_peers();
+    struct pollfd *fds = get_fds();
+    int *num_fds_ptr = get_num_fds();
+    time_t now = time(NULL);
+
+    for (int i = 1; i < *num_fds_ptr; ++i) {
+        Peer *p = &peers[i - 1];
+
+        if (now - p->last_keepalive_to_peer >= 60) {
+            if (get_args().debug_mode) {
+                fprintf(stderr, "[BTCLIENT_KEEPALIVE]: Sending keep-alive to peer_idx %d (sock %d)\n", i - 1, fds[i].fd);
+                fflush(stderr);
+            }
+
+            ssize_t sent = send(p->sock_fd, "\x00\x00\x00\x00", 4, 0);
+            if (sent == 4) {
+                p->last_keepalive_to_peer = now;
+            } else {
+                if (get_args().debug_mode) {
+                    fprintf(stderr, "[BTCLIENT_KEEPALIVE]: Failed to send keep-alive to peer_idx %d: %s\n", i - 1, strerror(errno));
+                    fflush(stderr);
+                }
+            }
+        }
+    }
+}
+
+
 // Updates the download and upload rates. If you want the result rates, call get_download_rate() or get_upload_rate()
 int update_download_upload_rate(Peer *peer) {
   struct timeval current_time;

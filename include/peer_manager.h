@@ -153,4 +153,6 @@ double get_download_rate(Peer *peer);
  */
 double get_upload_rate(Peer *peer);
 
+void peer_manager_send_keep_alives(void);
+
 #endif

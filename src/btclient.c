@@ -565,7 +565,7 @@ int main(int argc, char *argv[]) {
             }
             i++; // Move to the next fd ONLY if no peer was removed 
         }
-
+        peer_manager_send_keep_alives();
         // TODO: for uploads to work we should not be breaking when we're done downloading
         if (piece_manager_is_download_complete()) {
             print_progress_bar(1.0); // Ensure progress bar shows 100%
