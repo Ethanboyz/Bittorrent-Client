@@ -287,8 +287,7 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             uint8_t *block = malloc(length);
             if (!piece_manager_read_block(index, begin, length, block)) {
                 if (get_args().debug_mode) {
-                    fprintf(stderr, "[PEER_MANAGER]: Ignoring REQUEST for idx=%u block could not be read from file\n", 
-                            index);
+                    fprintf(stderr, "[PEER_MANAGER]: Ignoring REQUEST for idx=%u block could not be read from file\n", index);
                     fflush(stderr);
                 }
                 free(block);
