@@ -296,15 +296,10 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
                 break;
             }
                 */
-            // if the piece is still in memory:
             if (piece_manager_get_all_managed_pieces()[index].data_buffer) {
                 memcpy(block, piece_manager_get_all_managed_pieces()[index].data_buffer + begin, length);
             } else {
                 piece_manager_read_block(index, begin, length, block);
-            }
-
-            for (int i = 0; i < length; i++) {
-                fprintf(stderr, "%u", block[i]);
             }
 
             // respond to peer with piece message of requested block

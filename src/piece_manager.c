@@ -125,8 +125,26 @@ int piece_manager_init(const Torrent *torrent, const char *output_filename) {
         return -1;
     }
 
-    // Open/create the output file
-    output_file_ptr = fopen(output_file_name_global, "wb+");
+    // Open/create the output file// If the file already exists, open it for read/write without truncating.
+    // Otherwise create & truncate a brand‑new file.
+    if (access(output_file_name_global, F_OK) == 0) {
+        // resume/seeding mode
+        output_file_ptr = fopen(output_file_name_global, "r+b");
+        if (!output_file_ptr && get_args().debug_mode) {
+            fprintf(stderr, "[PieceManager] Error: could not open existing file '%s' for seeding: %s\n", output_file_name_global, strerror(errno));
+        }
+    } else {
+        // first‑time download
+        output_file_ptr = fopen(output_file_name_global, "wb+");
+        if (output_file_ptr && total_torrent_file_length > 0) {
+            // your existing pre‑allocation logic:
+            if (fseeko(output_file_ptr, total_torrent_file_length - 1, SEEK_SET) == 0) {
+                fwrite("\0", 1, 1, output_file_ptr);
+                fflush(output_file_ptr);
+                rewind(output_file_ptr);
+            }
+        }
+    }
     if (!output_file_ptr) {
         if (get_args().debug_mode) {
             fprintf(stderr, "[PieceManager] CRITICAL: Could not open/create file '%s': %s.\n",
