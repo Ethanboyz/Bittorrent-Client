@@ -410,7 +410,7 @@ bool piece_manager_read_block(uint32_t piece_index, uint32_t begin, uint32_t blo
     }
 
     // read block data from file into buffer 
-    if (fread(block, 1, block_length, output_file_ptr) != block_length) {
+    if (fread(*block, 1, block_length, output_file_ptr) != block_length) {
         return false;
     }
     

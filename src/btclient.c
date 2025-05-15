@@ -472,6 +472,7 @@ int main(int argc, char *argv[]) {
         peer_addr.sin_port = htons(get_args().peer_port);
         if (get_args().debug_mode) {fprintf(stderr, "[BTCLIENT_MAIN]: Connecting to specified address %s:%d\n", get_args().peer_ip, get_args().peer_port); fflush(stderr);}
 
+        num_fds = 1;
         int new_sock = peer_manager_add_peer(*current_torrent, &peer_addr, sizeof(peer_addr));
         if (new_sock <= 0) {
             if (get_args().debug_mode) {fprintf(stderr, "[BTCLIENT_MAIN]: Could not connect to %s:%d\n", get_args().peer_ip, get_args().peer_port); fflush(stderr);}

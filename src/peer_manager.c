@@ -376,7 +376,7 @@ static int parse_peer_incoming_buffer(Peer *peer) {
             // Consume the peer_id
             memcpy(peer->id, peer->incoming_buffer + 48, 20);
             size_t bitfield_length = 0;
-            //piece_manager_get_our_bitfield(NULL, &bitfield_length);
+            piece_manager_get_our_bitfield(NULL, &bitfield_length);
             if (get_args().debug_mode) {
                 fprintf(stderr, "[PEER_MANAGER]: Bitfield length is %lu\n", bitfield_length); 
                 fflush(stderr);
