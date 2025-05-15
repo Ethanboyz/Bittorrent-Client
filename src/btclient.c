@@ -30,6 +30,8 @@ static struct pollfd fds[MAX_PEERS + 1];
 static int num_fds;
 static int num_peers;
 
+static bool endgame = false;
+
 static struct run_arguments args;
 static Torrent *current_torrent = NULL;
 static unsigned char client_peer_id[20];
@@ -63,6 +65,10 @@ Peer *get_peers(void) {
 
 int *get_num_peers(void) {
     return &num_peers;
+}
+
+bool get_endgame(void) {
+    return endgame;
 }
 
 // Prints progress bar (progress must be between 0 and 1)
@@ -505,7 +511,7 @@ int main(int argc, char *argv[]) {
             fflush(stderr);
         }
 
-        // ADDED: Periodic tracker re-query logic
+        // Periodic tracker re-query logic
         if (time(NULL) - last_tracker_request_time >= tracker_interval_seconds) {
             if (get_args().debug_mode) {
                 fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Tracker interval elapsed (%ds). Re-contacting tracker.\n", tracker_interval_seconds);
@@ -590,6 +596,31 @@ int main(int argc, char *argv[]) {
             }
             free_tracker_response(&new_tracker_resp); 
             last_tracker_request_time = time(NULL);
+        }
+
+        // Enable endgame mode if applicable
+        uint64_t bytes_left = piece_manager_get_bytes_left_total();
+        if (!endgame && bytes_left > 0 && (bytes_left <= DEFAULT_BLOCK_LENGTH * MAX_OUTSTANDING_REQUESTS * 100)) {
+            endgame = true;
+            if (get_args().debug_mode) {fprintf(stderr, "[BTCLIENT_MAIN_LOOP]: Entering ENDGAME MODE, broadcasting remaining blocks to all peers\n"); fflush(stderr);}
+            // Broadcast every missing block request to every peer
+            uint32_t total_pieces = piece_manager_get_total_pieces_count();
+            for (uint32_t p_idx = 0; p_idx < total_pieces; ++p_idx) {
+                if (piece_manager_get_piece_state(p_idx) == PIECE_STATE_MISSING || piece_manager_get_piece_state(p_idx) == PIECE_STATE_PENDING) {
+                    uint32_t block_begin, block_length;
+                    // Ignore the piece->block_requested guard in endgame
+                    while (piece_manager_get_block_to_request_from_piece(p_idx, &block_begin, &block_length)) {
+                        // Send to all peers that have it
+                        for (int i = 0; i < *get_num_peers(); ++i) {
+                            Peer *peer = &get_peers()[i];
+                            bool has_piece = (peer->bitfield && ((peer->bitfield[p_idx / 8] >> (7 - (p_idx % 8))) & 1));
+                            if (peer->handshake_done && !peer->choked && has_piece) {
+                                peer_manager_send_request(peer, p_idx, block_begin, block_length);
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         int poll_timeout_ms = 1000; // 1 second timeout

@@ -54,6 +54,26 @@ static int send_message(Peer *peer, const unsigned char *message, size_t message
     return sent;
 }
 
+// Send cancel message to peer
+int peer_manager_send_cancel(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length) {
+    unsigned char message[17];
+    uint32_t length_prefix = htonl(13);
+    memcpy(message + 0, &length_prefix, 4);
+    message[4] = CANCEL;
+    uint32_t req_index = htonl(request_index);
+    uint32_t begin = htonl(request_begin);
+    uint32_t req_length = htonl(request_length);
+    memcpy(message + 5, &req_index, 4);
+    memcpy(message + 9, &begin, 4);
+    memcpy(message + 13, &req_length, 4);
+
+    if (send_message(peer, message, 17) == -1) {
+        if (get_args().debug_mode) { fprintf(stderr, "[PEER_MANAGER]: Failed to send CANCEL\n"); fflush(stderr); }
+        return -1;
+    }
+    return 0;
+}
+
 // Send handshake message to peer with info_hash attached, returning the number of bytes sent
 static int send_handshake(Peer *peer) {
     int handshake_length = 68;
@@ -294,6 +314,17 @@ static void handle_peer_message(Peer *peer, uint8_t msg_id, const uint8_t *paylo
             const unsigned char *block = payload + 8;
             size_t block_length = payload_length - 8;   // 8 is the length of index and begin combined
             dequeue_and_process_outstanding(peer, index, begin, block, block_length);
+
+            if (get_endgame()) {
+                // broadcast CANCEL for this block to everyone else
+                for (int i = 0; i < *get_num_peers(); ++i) {
+                    Peer *other = &get_peers()[i];
+                    if (other != peer) {
+                        peer_manager_send_cancel(other, index, begin, block_length);
+                    }
+                }
+            }
+
             break;
         }
         case CANCEL: {

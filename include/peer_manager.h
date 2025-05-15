@@ -67,6 +67,12 @@ typedef struct {
     bool is_interested;                             // True meaning this peer is interested in us (we have pieces it doesn't have)
 } Peer;
 
+/**
+ * @brief Send cancel message to peer
+ * @return 0 if successful, -1 otherwise
+ */
+int peer_manager_send_cancel(Peer *peer, uint32_t request_index, uint32_t request_begin, uint32_t request_length);
+
 /** 
  * @brief Send interested message to peer
  * @return 0 if successful, -1 otherwise

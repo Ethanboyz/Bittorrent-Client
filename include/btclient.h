@@ -14,10 +14,11 @@ struct pollfd;
 struct run_arguments get_args(void);
 
 /* Getters */
-struct pollfd *get_fds(void); // Return "authentic" fds array
-int *get_num_fds(void); // Return number of fds in fds array
-Peer *get_peers(void); // Return "authentic" peers array 
-int *get_num_peers(void); // Return number of peers
+struct pollfd *get_fds(void);   // Return "authentic" fds array
+int *get_num_fds(void);         // Return number of fds in fds array
+Peer *get_peers(void);          // Return "authentic" peers array 
+int *get_num_peers(void);       // Return number of peers
+bool get_endgame(void);         // Return endgame status
 
 /**
 * @brief Start client listening for incoming connections.
