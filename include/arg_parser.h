@@ -1,12 +1,16 @@
 #include <inttypes.h>
 #include <arpa/inet.h>
 #include <argp.h>
+#include <stdbool.h>
 
 // Holds parsed run arguments for the client
 struct run_arguments {
     int debug_mode;             // If debug mode should be enabled (writes output to log file)
     int port;
     char *filename;             // Torrent file
+    char *peer_ip;              // Hardcoded peer address
+    int peer_port;              // Hardcoded peer port
+    bool seed_after;            // Seed after download complete
 };
 
 /**

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdbool.h>
 
 #include "arg_parser.h"
 
@@ -32,6 +33,18 @@ error_t arg_parser(int key, char *arg, struct argp_state *state) {
 		strcpy(args->filename, arg);
 		break;
 	}
+	case 'A': {
+		args->peer_ip = arg;
+		break;
+	}
+	case 'P': {
+		args->peer_port = atoi(arg);
+		break;
+	}
+	case 's': {
+		args->seed_after = true;
+		break;
+	}
 	default:
 		ret = ARGP_ERR_UNKNOWN;
 		break;
@@ -46,7 +59,10 @@ struct run_arguments arg_parseopt(int argc, char *argv[]) {
 	struct argp_option options[] = {
 		{ "debug", 'd', NULL, 0, "Enable debug mode for extra output", 0},
 		{ "port", 'p', "port", 0, "The port that is being used by client", 0},
-		{ "file", 'f', "file", 0, "The torrent file", 0},
+		{ "file", 'f', "filename", 0, "The torrent file", 0},
+		{ "peer-ip", 'A', "address", 0, "Only download from this peer", 0},
+		{ "peer-port", 'P', "peer port", 0, "Peer's port if --peer-ip is specified", 0},
+		{ "seed-after", 's', NULL, 0, "Seed after download complete", 0},
 		{0}
 	};
 
