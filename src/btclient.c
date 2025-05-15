@@ -597,7 +597,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "[BTCLIENT_MAIN]: Cleaning up peer connections...\n");
         fflush(stderr);
     }
-    // MODIFIED: Cleanup loop 
     for (int i_cleanup = (*get_num_fds()) - 1; i_cleanup >= 1; i_cleanup--) {
          // peers array index is fds index - 1
         if (i_cleanup -1 < *get_num_peers() && i_cleanup -1 >= 0) { // Check if peer exists at this index
@@ -617,9 +616,6 @@ int main(int argc, char *argv[]) {
                          i_cleanup, *get_num_peers(), fds[i_cleanup].fd);
                 fflush(stderr);
             }
-            // Ensure fd is closed if it wasn't handled by peer_manager_remove_peer (e.g., if arrays got desynced somehow)
-            // peer_manager_remove_peer should have closed fds[i_cleanup].fd if a peer was associated.
-            // This is a fallback.
             if (fds[i_cleanup].fd != -1) { // Double check as peer_manager_remove_peer should set it to -1 or remove the entry
                 close(fds[i_cleanup].fd);
                 fds[i_cleanup].fd = -1;
@@ -644,7 +640,7 @@ int main(int argc, char *argv[]) {
         fflush(stderr);
     }
 
-    if (fds[0].fd != -1) { // Close listen socket
+    if (fds[0].fd != -1) { 
         if (get_args().debug_mode) {
             fprintf(stderr, "[BTCLIENT_MAIN]: Closing listen socket %d.\n", fds[0].fd);
             fflush(stderr);
@@ -652,7 +648,6 @@ int main(int argc, char *argv[]) {
         close(fds[0].fd);
         fds[0].fd = -1;
     }
-    // MODIFIED: reset global counts
     *get_num_fds() = 0;
     *get_num_peers() = 0;
 
