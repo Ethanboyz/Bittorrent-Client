@@ -599,6 +599,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Enable endgame mode if applicable
+        /*
         uint64_t bytes_left = piece_manager_get_bytes_left_total();
         if (!endgame && bytes_left > 0 && (bytes_left <= DEFAULT_BLOCK_LENGTH * MAX_OUTSTANDING_REQUESTS * 100)) {
             endgame = true;
@@ -621,7 +622,7 @@ int main(int argc, char *argv[]) {
                     }
                 }
             }
-        }
+        }*/
         
         int poll_timeout_ms = 1000; // 1 second timeout
         int poll_result = poll(fds, *get_num_fds(), poll_timeout_ms);
