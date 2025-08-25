@@ -19,16 +19,15 @@ Running some torrents causes bencode asserts to fail (torrent file dependent)
 Security issues (memory handling, file I/O)
 
 ### Work in Progress
-Send HAVE messages (not just receiving HAVE messages) for continuous uploading
-Allow resuming download after killing the btclient process
- - Write to disk (done)
- - Record tokens
-
-Rarest first implementation
-Endgame mode
-BitTyrant
-Propshare
-Multifile torrenting
+ - Send HAVE messages (not just receiving HAVE messages) for continuous uploading
+ - Allow resuming download after killing the btclient process
+   - Write to disk (done)
+   - Record tokens
+ - Rarest first implementation
+ - Endgame mode
+ - BitTyrant
+ - Propshare
+ - Multifile torrenting
 
 ## Test With:
   - Download time
