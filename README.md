@@ -7,9 +7,9 @@ git submodule update --init --recursive
 Example executable
 ./btclient -d -p 1234 -f fileName
  
--d: if included then enable debug mode
--p: port that our client will run on
--f: torrent file
+ - -d: if included then enable debug mode
+ - -p: port that our client will run on
+ - -f: torrent file
 
 ## Development Plan
 
