@@ -8,7 +8,7 @@ Example executable
 ./btclient -d -p 1234 -f fileName
  
  - -d: if included then enable debug mode
- - -p: port that our client will run on
+ - -p: port that client will run on
  - -f: torrent file
 
 ## Development Plan
