@@ -1,4 +1,5 @@
 # BitTorrent
+*.torrent
 
 # Misc
 *.txt
